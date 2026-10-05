@@ -1,0 +1,339 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                    String    @id @default(cuid())
+  email                 String    @unique
+  passwordHash          String
+  role                  String
+  name                  String
+  emailVerified         Boolean   @default(false)
+  verificationCode      String?
+  verificationExpiresAt DateTime?
+  createdAt             DateTime  @default(now())
+
+  candidate CandidateProfile?
+  company   CompanyProfile?
+  sessions  Session[]
+}
+
+model Session {
+  id        String   @id @default(cuid())
+  token     String   @unique
+  userId    String
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model CandidateProfile {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  phone          String?
+  location       String?
+  headline       String?
+  objective      String?
+  github         String?
+  portfolio      String?
+  linkedin       String?
+  workCardNotes  String?
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  user            User                   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  educations      Education[]
+  certifications  Certification[]
+  coursesTaken    CandidateCourse[]
+  experiences     Experience[]
+  projects        Project[]
+  resumes         Resume[]
+  assessments     Assessment[]
+  skills          CandidateSkill[]
+  skillScores     SkillScore[]
+  recommendations CourseRecommendation[]
+  jobCandidates   JobCandidate[]
+}
+
+model Education {
+  id          String  @id @default(cuid())
+  candidateId String
+  institution String
+  course      String
+  level       String
+  startYear   Int?
+  endYear     Int?
+  status      String  @default("CONCLUIDO")
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model Certification {
+  id          String  @id @default(cuid())
+  candidateId String
+  name        String
+  issuer      String?
+  year        Int?
+  url         String?
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model CandidateCourse {
+  id          String  @id @default(cuid())
+  candidateId String
+  name        String
+  issuer      String?
+  year        Int?
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model Experience {
+  id          String  @id @default(cuid())
+  candidateId String
+  company     String
+  role        String
+  startDate   String
+  endDate     String?
+  current     Boolean @default(false)
+  description String?
+  technologies String
+  registered  Boolean @default(false)
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model Project {
+  id          String  @id @default(cuid())
+  candidateId String
+  name        String
+  description String?
+  technologies String
+  url         String?
+  repo        String?
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+}
+
+model Resume {
+  id          String   @id @default(cuid())
+  candidateId String
+  fileName    String
+  fileType    String
+  rawText     String
+  uploadedAt  DateTime @default(now())
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  analysis  ResumeAnalysis?
+}
+
+model ResumeAnalysis {
+  id         String   @id @default(cuid())
+  resumeId   String   @unique
+  data       String
+  provider   String
+  createdAt  DateTime @default(now())
+
+  resume Resume @relation(fields: [resumeId], references: [id], onDelete: Cascade)
+}
+
+model Skill {
+  id       String @id @default(cuid())
+  name     String @unique
+  category String
+
+  candidateSkills CandidateSkill[]
+  skillScores     SkillScore[]
+  jobRequirements JobRequirement[]
+  courses         Course[]
+  assessmentItems AssessmentItem[]
+}
+
+model CandidateSkill {
+  id          String   @id @default(cuid())
+  candidateId String
+  skillId     String
+  source      String
+  evidence    String?
+  createdAt   DateTime @default(now())
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill     Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, skillId, source])
+}
+
+model Assessment {
+  id          String   @id @default(cuid())
+  candidateId String
+  title       String
+  status      String   @default("PENDING")
+  level       String
+  provider    String
+  createdAt   DateTime @default(now())
+  completedAt DateTime?
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  items     AssessmentItem[]
+}
+
+model AssessmentItem {
+  id           String  @id @default(cuid())
+  assessmentId String
+  skillId      String
+  type         String
+  prompt       String
+  options      String?
+  correctIndex Int?
+  rubric       String?
+  starterCode  String?
+  language     String?
+  testCases    String?
+  points       Int     @default(100)
+  order        Int     @default(0)
+
+  assessment Assessment         @relation(fields: [assessmentId], references: [id], onDelete: Cascade)
+  skill      Skill              @relation(fields: [skillId], references: [id])
+  response   AssessmentResponse?
+}
+
+model AssessmentResponse {
+  id         String   @id @default(cuid())
+  itemId     String   @unique
+  answer     String
+  score      Float
+  feedback   String?
+  breakdown  String?
+  answeredAt DateTime @default(now())
+
+  item AssessmentItem @relation(fields: [itemId], references: [id], onDelete: Cascade)
+}
+
+model SkillScore {
+  id          String   @id @default(cuid())
+  candidateId String
+  skillId     String
+  score       Float
+  source      String
+  breakdown   String?
+  updatedAt   DateTime @updatedAt
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  skill     Skill            @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, skillId])
+}
+
+model Course {
+  id       String  @id @default(cuid())
+  title    String
+  provider String
+  level    String
+  hours    Int
+  url      String
+  skillId  String
+
+  skill           Skill                @relation(fields: [skillId], references: [id], onDelete: Cascade)
+  recommendations CourseRecommendation[]
+}
+
+model CourseRecommendation {
+  id          String   @id @default(cuid())
+  candidateId String
+  courseId    String
+  reason      String
+  priority    Int      @default(1)
+  createdAt   DateTime @default(now())
+
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+  course    Course           @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([candidateId, courseId])
+}
+
+model CompanyProfile {
+  id          String   @id @default(cuid())
+  userId      String   @unique
+  tradeName   String
+  sector      String?
+  location    String?
+  website     String?
+  description String?
+  createdAt   DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  jobs Job[]
+}
+
+model Job {
+  id          String   @id @default(cuid())
+  companyId   String
+  title       String
+  description String
+  level       String
+  location    String?
+  minExperienceYears Int @default(0)
+  minOverallScore    Int @default(70)
+  status      String   @default("OPEN")
+  createdAt   DateTime @default(now())
+
+  company      CompanyProfile  @relation(fields: [companyId], references: [id], onDelete: Cascade)
+  requirements JobRequirement[]
+  analysis     JobAnalysis?
+  candidates   JobCandidate[]
+}
+
+model JobRequirement {
+  id       String @id @default(cuid())
+  jobId    String
+  skillId  String
+  kind     String
+  minScore Int    @default(70)
+
+  job   Job   @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  skill Skill @relation(fields: [skillId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, skillId])
+}
+
+model JobAnalysis {
+  id        String   @id @default(cuid())
+  jobId     String   @unique
+  data      String
+  provider  String
+  createdAt DateTime @default(now())
+
+  job Job @relation(fields: [jobId], references: [id], onDelete: Cascade)
+}
+
+model JobCandidate {
+  id          String   @id @default(cuid())
+  jobId       String
+  candidateId String
+  eligible    Boolean  @default(false)
+  reasons     String?
+  stage       String   @default("ELIGIBLE")
+  updatedAt   DateTime @updatedAt
+
+  job       Job              @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  candidate CandidateProfile @relation(fields: [candidateId], references: [id], onDelete: Cascade)
+
+  @@unique([jobId, candidateId])
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  actorId   String?
+  action    String
+  entity    String
+  entityId  String?
+  detail    String?
+  createdAt DateTime @default(now())
+}
