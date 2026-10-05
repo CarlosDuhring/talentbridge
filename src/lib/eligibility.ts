@@ -91,6 +91,14 @@ export async function evaluateEligibility(
   return { eligible: reasons.length === 0, reasons, checks };
 }
 
+function nextStage(current: string | null | undefined, eligible: boolean): string {
+  const fallback = eligible ? "ELIGIBLE" : "INELIGIBLE";
+  if (!current) return fallback;
+  if (current === "ELIGIBLE" && !eligible) return "INELIGIBLE";
+  if (current === "INELIGIBLE" && eligible) return "ELIGIBLE";
+  return current;
+}
+
 export async function refreshJobCandidates(jobId: string) {
   const job = await prisma.job.findUnique({ where: { id: jobId } });
   if (!job) return;
@@ -101,11 +109,16 @@ export async function refreshJobCandidates(jobId: string) {
 
   for (const c of candidates) {
     const result = await evaluateEligibility(jobId, c.id);
+    const existing = await prisma.jobCandidate.findUnique({
+      where: { jobId_candidateId: { jobId, candidateId: c.id } },
+      select: { stage: true },
+    });
     await prisma.jobCandidate.upsert({
       where: { jobId_candidateId: { jobId, candidateId: c.id } },
       update: {
         eligible: result.eligible,
         reasons: result.reasons.length ? JSON.stringify(result.reasons) : null,
+        stage: nextStage(existing?.stage, result.eligible),
       },
       create: {
         jobId,
@@ -122,11 +135,16 @@ export async function refreshCandidateAcrossJobs(candidateId: string) {
   const jobs = await prisma.job.findMany({ select: { id: true } });
   for (const job of jobs) {
     const result = await evaluateEligibility(job.id, candidateId);
+    const existing = await prisma.jobCandidate.findUnique({
+      where: { jobId_candidateId: { jobId: job.id, candidateId } },
+      select: { stage: true },
+    });
     await prisma.jobCandidate.upsert({
       where: { jobId_candidateId: { jobId: job.id, candidateId } },
       update: {
         eligible: result.eligible,
         reasons: result.reasons.length ? JSON.stringify(result.reasons) : null,
+        stage: nextStage(existing?.stage, result.eligible),
       },
       create: {
         jobId: job.id,

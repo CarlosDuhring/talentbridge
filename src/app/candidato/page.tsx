@@ -1,4 +1,6 @@
 import Link from "next/link";
+import { cookies } from "next/headers";
+import { redirect } from "next/navigation";
 import { requireCandidate } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { getOverallScore } from "@/lib/scoring";
@@ -14,6 +16,14 @@ export default async function CandidateDashboard() {
   const session = await requireCandidate();
   if (!session) return null;
   const candidateId = session.profile.id;
+
+  const store = await cookies();
+  if (store.get("tb_welcome_skipped")?.value !== "1") {
+    const assessmentCount = await prisma.assessment.count({
+      where: { candidateId },
+    });
+    if (assessmentCount === 0) redirect("/candidato/boas-vindas");
+  }
 
   const [overall, skillScores, assessments, recommendations, resumes] =
     await Promise.all([

@@ -4,7 +4,7 @@ import { prisma } from "@/lib/db";
 import { requireCandidate } from "@/lib/auth";
 import { runCode } from "@/lib/runner";
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const schema = z.object({
   language: z.enum(["php", "javascript", "python", "java"]),

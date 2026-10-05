@@ -7,6 +7,7 @@ import { ProgressBar, scoreBarTone } from "@/components/ui/ProgressBar";
 import { DonutScore, RadarChart } from "@/components/charts/Charts";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ButtonLink } from "@/components/ui/Button";
+import { originLabel, originTone } from "@/lib/origins";
 
 export default async function ReportPage() {
   const session = await requireCandidate();
@@ -114,11 +115,15 @@ export default async function ReportPage() {
                   </p>
                 ) : (
                   <div className="flex flex-wrap gap-1.5">
-                    {notAssessed.map((s) => (
-                      <Badge key={s} tone="yellow">
-                        {s}
-                      </Badge>
-                    ))}
+                    {notAssessed.map((s) => {
+                      const o = originLabel(s.origin);
+                      return (
+                        <Badge key={s.name} tone="yellow">
+                          {s.name}
+                          {o ? ` · ${o}` : ""}
+                        </Badge>
+                      );
+                    })}
                   </div>
                 )}
               </CardBody>
@@ -153,15 +158,21 @@ export default async function ReportPage() {
             />
             <CardBody>
               <div className="grid gap-2 md:grid-cols-2">
-                {informed.map((i) => (
-                  <div
-                    key={i.name}
-                    className="flex items-center justify-between rounded-lg border border-black/[0.06] px-3 py-2 text-sm"
-                  >
-                    <span>{i.name}</span>
-                    <Badge tone="neutral">{i.category}</Badge>
-                  </div>
-                ))}
+                {informed.map((i) => {
+                  const o = originLabel(i.origin);
+                  return (
+                    <div
+                      key={i.name}
+                      className="flex items-center justify-between gap-2 rounded-lg border border-black/[0.06] px-3 py-2 text-sm"
+                    >
+                      <span>{i.name}</span>
+                      <span className="flex items-center gap-1.5">
+                        {o ? <Badge tone={originTone(i.origin)}>{o}</Badge> : null}
+                        <Badge tone="neutral">{i.category}</Badge>
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </CardBody>
           </Card>

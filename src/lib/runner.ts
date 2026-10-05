@@ -11,32 +11,46 @@ export type RunResult = {
   durationMs: number;
 };
 
-const TIMEOUT_MS = 5000;
+const HOST_TIMEOUT_MS = 5000;
+const DOCKER_TIMEOUT_MS = 20000;
 const MAX_OUTPUT = 20000;
 
-const RUNNERS: Record<
-  string,
-  { file: string; cmd: string; args: (dir: string) => string[] }
-> = {
+type LanguageSpec = {
+  file: string;
+  hostCmd: () => string;
+  hostArgs: (dir: string) => string[];
+  image: string;
+  containerArgs: string[];
+};
+
+const RUNNERS: Record<string, LanguageSpec> = {
   php: {
     file: "main.php",
-    cmd: "php",
-    args: (dir) => [join(dir, "main.php")],
+    hostCmd: () => "php",
+    hostArgs: (dir) => [join(dir, "main.php")],
+    image: "php:8.3-cli",
+    containerArgs: ["php", "/app/main.php"],
   },
   javascript: {
     file: "main.js",
-    cmd: "node",
-    args: (dir) => [join(dir, "main.js")],
+    hostCmd: () => "node",
+    hostArgs: (dir) => [join(dir, "main.js")],
+    image: "node:20-alpine",
+    containerArgs: ["node", "/app/main.js"],
   },
   python: {
     file: "main.py",
-    cmd: "python3",
-    args: (dir) => [join(dir, "main.py")],
+    hostCmd: () => (process.platform === "win32" ? "python" : "python3"),
+    hostArgs: (dir) => [join(dir, "main.py")],
+    image: "python:3.12-alpine",
+    containerArgs: ["python", "/app/main.py"],
   },
   java: {
     file: "Main.java",
-    cmd: "java",
-    args: (dir) => [join(dir, "Main.java")],
+    hostCmd: () => "java",
+    hostArgs: (dir) => [join(dir, "Main.java")],
+    image: "eclipse-temurin:21-jdk",
+    containerArgs: ["java", "/app/Main.java"],
   },
 };
 
@@ -44,13 +58,69 @@ export function supportedLanguages() {
   return Object.keys(RUNNERS);
 }
 
+let dockerCheck: Promise<boolean> | null = null;
+
+function dockerAvailable(): Promise<boolean> {
+  if (!dockerCheck) {
+    dockerCheck = new Promise((resolve) => {
+      execFile(
+        "docker",
+        ["info", "--format", "{{.ServerVersion}}"],
+        { timeout: 5000, windowsHide: true },
+        (error, stdout, stderr) => {
+          if (error) return resolve(false);
+          const version = String(stdout).trim();
+          const failed =
+            /error during connect|cannot connect|is not recognized/i.test(
+              `${version}\n${stderr}`
+            );
+          resolve(version.length > 0 && !failed);
+        }
+      );
+    });
+  }
+  return dockerCheck;
+}
+
+async function resolveRunnerMode(): Promise<"docker" | "host" | null> {
+  const pref = (process.env.CODE_RUNNER ?? "auto").toLowerCase();
+  if (pref === "host") return "host";
+  const hasDocker = await dockerAvailable();
+  if (pref === "docker") return hasDocker ? "docker" : null;
+  return hasDocker ? "docker" : "host";
+}
+
+function dockerArgs(dir: string, name: string, spec: LanguageSpec): string[] {
+  return [
+    "run",
+    "--rm",
+    "-i",
+    "--name",
+    name,
+    "--network",
+    "none",
+    "--memory",
+    "256m",
+    "--cpus",
+    "0.5",
+    "--pids-limit",
+    "128",
+    "-v",
+    `${dir}:/app:ro`,
+    "-w",
+    "/app",
+    spec.image,
+    ...spec.containerArgs,
+  ];
+}
+
 export async function runCode(
   language: string,
   code: string,
   stdin: string
 ): Promise<RunResult> {
-  const runner = RUNNERS[language];
-  if (!runner) {
+  const spec = RUNNERS[language];
+  if (!spec) {
     return {
       ok: false,
       stdout: "",
@@ -60,25 +130,45 @@ export async function runCode(
     };
   }
 
+  const mode = await resolveRunnerMode();
+  if (!mode) {
+    return {
+      ok: false,
+      stdout: "",
+      stderr:
+        "Execução isolada indisponível: Docker não encontrado. Instale o Docker ou defina CODE_RUNNER=host.",
+      timedOut: false,
+      durationMs: 0,
+    };
+  }
+
+  const useDocker = mode === "docker";
   const dir = await mkdtemp(join(tmpdir(), "tb-run-"));
+  const containerName = useDocker
+    ? `tb-run-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`
+    : null;
   const started = Date.now();
+
   try {
-    await writeFile(join(dir, runner.file), code, "utf8");
+    await writeFile(join(dir, spec.file), code, "utf8");
     const result = await new Promise<RunResult>((resolve) => {
       const child = execFile(
-        runner.cmd,
-        runner.args(dir),
+        useDocker ? "docker" : spec.hostCmd(),
+        useDocker ? dockerArgs(dir, containerName!, spec) : spec.hostArgs(dir),
         {
           cwd: dir,
-          timeout: TIMEOUT_MS,
+          timeout: useDocker ? DOCKER_TIMEOUT_MS : HOST_TIMEOUT_MS,
           killSignal: "SIGKILL",
           maxBuffer: 1024 * 1024,
-          env: {
-            PATH: process.env.PATH,
-            HOME: dir,
-            LANG: "C.UTF-8",
-            NODE_ENV: process.env.NODE_ENV,
-          },
+          windowsHide: true,
+          env: useDocker
+            ? process.env
+            : {
+                PATH: process.env.PATH,
+                HOME: dir,
+                LANG: "C.UTF-8",
+                NODE_ENV: process.env.NODE_ENV,
+              },
         },
         (error, stdout, stderr) => {
           const timedOut =
@@ -97,6 +187,16 @@ export async function runCode(
     });
     return result;
   } finally {
+    if (containerName) {
+      await new Promise<void>((resolve) => {
+        execFile(
+          "docker",
+          ["rm", "-f", containerName],
+          { timeout: 5000, windowsHide: true },
+          () => resolve()
+        );
+      });
+    }
     await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
 }

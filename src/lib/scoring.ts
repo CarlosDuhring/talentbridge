@@ -13,6 +13,11 @@ export async function buildCandidateContext(
       experiences: true,
       projects: true,
       educations: true,
+      resumes: {
+        orderBy: { uploadedAt: "desc" },
+        take: 1,
+        include: { analysis: true },
+      },
     },
   });
   if (!candidate) return null;
@@ -32,18 +37,46 @@ export async function buildCandidateContext(
 
   const skillMap = new Map<
     string,
-    { name: string; category: string; source: string; evidence?: string | null }
+    {
+      name: string;
+      category: string;
+      source: string;
+      origin?: string | null;
+      evidence?: string | null;
+    }
   >();
   for (const s of candidate.skills) {
     const existing = skillMap.get(s.skill.name);
-    if (!existing || (existing.source === "INFORMED" && s.source === "ASSESSED")) {
+    if (!existing || (existing.source === "ASSESSED" && s.source === "INFORMED")) {
       skillMap.set(s.skill.name, {
         name: s.skill.name,
         category: s.skill.category,
         source: s.source,
+        origin: s.origin,
         evidence: s.evidence,
       });
     }
+  }
+
+  const latestResume = candidate.resumes[0];
+  let resume: CandidateContext["resume"] = null;
+  if (latestResume) {
+    let summary = "";
+    if (latestResume.analysis?.data) {
+      try {
+        const parsed = JSON.parse(latestResume.analysis.data) as {
+          summary?: string;
+        };
+        summary = parsed.summary ?? "";
+      } catch {
+        summary = "";
+      }
+    }
+    resume = {
+      fileName: latestResume.fileName,
+      summary,
+      text: latestResume.rawText.slice(0, 6000),
+    };
   }
 
   return {
@@ -52,6 +85,7 @@ export async function buildCandidateContext(
     headline: candidate.headline,
     objective: candidate.objective,
     level,
+    resume,
     skills: [...skillMap.values()],
     experiences,
     projects: candidate.projects.map((p) => ({
@@ -80,14 +114,15 @@ export async function addCandidateSkill(
   candidateId: string,
   skillId: string,
   source: "INFORMED" | "ASSESSED",
-  evidence?: string
+  evidence?: string,
+  origin?: string
 ) {
   return prisma.candidateSkill.upsert({
     where: {
       candidateId_skillId_source: { candidateId, skillId, source },
     },
-    update: { evidence: evidence ?? undefined },
-    create: { candidateId, skillId, source, evidence },
+    update: { evidence: evidence ?? undefined, origin: origin ?? undefined },
+    create: { candidateId, skillId, source, evidence, origin },
   });
 }
 
@@ -143,7 +178,7 @@ export async function recomputeSkillScores(candidateId: string) {
         breakdown: entry.items.join(" · "),
       },
     });
-    await addCandidateSkill(candidateId, entry.skillId, "ASSESSED");
+    await addCandidateSkill(candidateId, entry.skillId, "ASSESSED", undefined, "TESTE");
   }
 
   return bySkill.size;
@@ -169,6 +204,17 @@ export async function getCandidateReport(candidateId: string) {
       certifications: true,
       coursesTaken: true,
       recommendations: { include: { course: { include: { skill: true } } } },
+      resumes: {
+        orderBy: { uploadedAt: "desc" },
+        select: {
+          id: true,
+          fileName: true,
+          fileType: true,
+          hasFile: true,
+          rawText: true,
+          uploadedAt: true,
+        },
+      },
       assessments: {
         include: {
           items: { include: { response: true, skill: true } },
@@ -189,11 +235,16 @@ export async function getCandidateReport(candidateId: string) {
 
   const informed = candidate.skills
     .filter((s) => s.source === "INFORMED")
-    .map((s) => ({ name: s.skill.name, category: s.skill.category, evidence: s.evidence }));
+    .map((s) => ({
+      name: s.skill.name,
+      category: s.skill.category,
+      evidence: s.evidence,
+      origin: s.origin,
+    }));
 
   const notAssessed = informed
     .filter((i) => !assessed.some((a) => a.name === i.name))
-    .map((i) => i.name);
+    .map((i) => ({ name: i.name, origin: i.origin }));
 
   return {
     candidate,

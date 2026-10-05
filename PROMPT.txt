@@ -247,6 +247,16 @@ A IA deve criar avaliações personalizadas considerando:
 - nível profissional;
 - competências identificadas.
 
+IMPORTANTE:
+
+As perguntas das avaliações devem ser geradas pela IA a partir do conteúdo real do currículo do candidato (competências, experiências, projetos e evidências identificadas).
+
+Não utilizar bancos de perguntas pré-definidos, listas fixas de competências ou modelos genéricos que ignorem o currículo.
+
+Cada pergunta deve referenciar a evidência do currículo que a originou. Competências que não estejam no currículo não devem ser avaliadas.
+
+As linguagens usadas nos testes práticos de programação devem ser aquelas efetivamente identificadas no currículo do candidato.
+
 Exemplo:
 
 O candidato possui:
@@ -295,6 +305,21 @@ A plataforma deve permitir avaliações com:
 - situações práticas.
 
 A IA pode gerar perguntas de acordo com as competências que precisam ser avaliadas.
+A IA deve gerar as perguntas a partir das competências e evidências do currículo do candidato, conforme a seção 8.
+
+IMPORTANTE:
+
+As questões devem testar conhecimento real das competências que estão no currículo. Cada pergunta precisa ter resposta correta/incorreta (múltipla escolha e código) ou rubrica objetiva com os conceitos esperados (pergunta aberta).
+
+É proibido usar autoavaliação: não perguntar ao candidato o que ele acha que sabe, se considera que domina a tecnologia ou se a aplicação dele foi "correta". O sistema deve verificar o domínio por desempenho.
+
+A pontuação por competência deve resultar do desempenho nas questões: acertos na múltipla escolha, conceitos demonstrados nas respostas abertas e casos de teste no código.
+
+Após a avaliação, deve ser possível concluir se o candidato demonstra ou não domínio de cada assunto do currículo.
+
+Competências identificadas em cursos, certificações e projetos do currículo também devem ser avaliadas pela prova.
+
+Soft skills (habilidades comportamentais, como comunicação, trabalho em equipe e liderança) também fazem parte da avaliação: usar questões situacionais de múltipla escolha e perguntas abertas sobre situações reais, com pontuação própria por competência.
 
 ==================================================
 10. TESTES PRÁTICOS DE PROGRAMAÇÃO

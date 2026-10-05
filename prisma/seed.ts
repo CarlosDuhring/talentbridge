@@ -35,6 +35,8 @@ const SKILLS: { name: string; category: string }[] = [
   { name: "HTML", category: "FUNDAMENTO" },
   { name: "CSS", category: "FUNDAMENTO" },
   { name: "Scrum", category: "OUTRO" },
+  { name: "Comunicação", category: "SOFT_SKILL" },
+  { name: "Trabalho em equipe", category: "SOFT_SKILL" },
 ];
 
 const COURSES: {
@@ -155,6 +157,17 @@ async function main() {
     recommendations: { skill: string; reason: string; priority: number }[];
   };
 
+  function originFor(skill: string, c: CandidateSeed): string {
+    const has = (techs: string) =>
+      techs
+        .split(",")
+        .map((t) => t.trim())
+        .includes(skill);
+    if (c.experiences.some((e) => has(e.technologies))) return "EXPERIENCIA";
+    if (c.projects.some((p) => has(p.technologies))) return "PROJETO";
+    return "CURRICULO";
+  }
+
   const candidates: CandidateSeed[] = [
     {
       email: "joao@talentbridge.dev",
@@ -216,6 +229,8 @@ async function main() {
         { name: "Git", evidence: "Controle de versão nos projetos" },
         { name: "REST APIs", evidence: "API de rastreamento de entregas" },
         { name: "Lógica de programação", evidence: "Formação técnica e prática diária" },
+        { name: "Comunicação", evidence: "Comunicação com time e clientes nos projetos" },
+        { name: "Trabalho em equipe", evidence: "Atuação em squad de produto na LogiSoft" },
       ],
       scores: [
         { skill: "PHP", score: 84, breakdown: "Múltipla escolha: 100/100 · Aberta: 78/100 · Código: 80/100" },
@@ -240,6 +255,9 @@ Manutenção de sites em PHP, JavaScript, HTML e CSS.
 
 Tecnologias
 PHP, Laravel, MySQL, JavaScript, Git, REST APIs
+
+Habilidades
+Comunicação, Trabalho em equipe
 
 Certificações
 PHP Fundamentals — Alura (2022)
@@ -316,6 +334,8 @@ Painel de Frotas — PHP, JavaScript, Bootstrap`,
         { name: "Lógica de programação", evidence: "Formação em Sistemas de Informação" },
         { name: "MySQL", evidence: "Experiência na DataMinds" },
         { name: "REST APIs", evidence: "APIs em PHP" },
+        { name: "Comunicação", evidence: "Apresentações de sprint e alinhamento com stakeholders" },
+        { name: "Trabalho em equipe", evidence: "Code reviews e pareamento no time SaaSFlow" },
       ],
       scores: [
         { skill: "PHP", score: 91, breakdown: "Múltipla escolha: 100/100 · Aberta: 88/100 · Código: 88/100" },
@@ -341,6 +361,9 @@ APIs REST em PHP e MySQL.
 
 Tecnologias
 PHP, Laravel, React, PostgreSQL, MySQL, Docker, AWS, Git, REST APIs
+
+Habilidades
+Comunicação, Trabalho em equipe
 
 Certificações
 AWS Cloud Practitioner (2023)
@@ -388,6 +411,8 @@ Scrum Fundamentals (2022)`,
         { name: "JavaScript", evidence: "Validações e interações no front-end" },
         { name: "Git", evidence: "Controle de versão" },
         { name: "Lógica de programação", evidence: "Formação tecnóloga" },
+        { name: "Comunicação", evidence: "Alinhamento de tarefas com o time de e-commerce" },
+        { name: "Trabalho em equipe", evidence: "Apoio ao time em correções de bugs" },
       ],
       scores: [
         { skill: "PHP", score: 78, breakdown: "Múltipla escolha: 50/100 · Aberta: 84/100 · Código: 92/100" },
@@ -409,6 +434,9 @@ Manutenção de e-commerce em PHP e MySQL.
 
 Tecnologias
 PHP, MySQL, JavaScript, Git
+
+Habilidades
+Comunicação, Trabalho em equipe
 
 Projetos
 Sistema de Estoque — PHP, MySQL, Bootstrap`,
@@ -505,6 +533,7 @@ Sistema de Estoque — PHP, MySQL, Bootstrap`,
           candidateId: profile.id,
           skillId: skillMap.get(s.name)!,
           source: "INFORMED",
+          origin: originFor(s.name, c),
           evidence: s.evidence,
         },
       });
@@ -525,6 +554,7 @@ Sistema de Estoque — PHP, MySQL, Bootstrap`,
           candidateId: profile.id,
           skillId: skillMap.get(s.skill)!,
           source: "ASSESSED",
+          origin: "TESTE",
         },
       });
     }

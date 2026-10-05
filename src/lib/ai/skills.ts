@@ -43,6 +43,17 @@ export const SKILL_DICTIONARY: SkillDef[] = [
   { name: "HTML", category: "FUNDAMENTO", aliases: ["html"] },
   { name: "CSS", category: "FUNDAMENTO", aliases: ["css"] },
   { name: "Scrum", category: "OUTRO", aliases: ["scrum", "ágil", "agile", "kanban"] },
+  { name: "Comunicação", category: "SOFT_SKILL", aliases: ["comunicação", "comunicacao", "comunicativo", "comunicação clara"] },
+  { name: "Trabalho em equipe", category: "SOFT_SKILL", aliases: ["trabalho em equipe", "trabalho em time", "teamwork", "colaboração", "colaboracao"] },
+  { name: "Liderança", category: "SOFT_SKILL", aliases: ["liderança", "lideranca", "liderar", "liderou"] },
+  { name: "Resolução de problemas", category: "SOFT_SKILL", aliases: ["resolução de problemas", "resolucao de problemas", "solução de problemas", "solucao de problemas", "problem solving"] },
+  { name: "Proatividade", category: "SOFT_SKILL", aliases: ["proatividade", "proativo", "proativa", "iniciativa"] },
+  { name: "Organização", category: "SOFT_SKILL", aliases: ["organização", "organizacao", "organizado", "organizada"] },
+  { name: "Gestão de tempo", category: "SOFT_SKILL", aliases: ["gestão de tempo", "gestao de tempo", "gestão do tempo", "priorização", "priorizacao", "prazos"] },
+  { name: "Adaptabilidade", category: "SOFT_SKILL", aliases: ["adaptabilidade", "adaptável", "adaptavel", "flexibilidade", "resiliência", "resiliencia"] },
+  { name: "Pensamento crítico", category: "SOFT_SKILL", aliases: ["pensamento crítico", "pensamento critico", "análise crítica", "analise critica"] },
+  { name: "Inteligência emocional", category: "SOFT_SKILL", aliases: ["inteligência emocional", "inteligencia emocional", "empatia", "empático", "empatico"] },
+  { name: "Criatividade", category: "SOFT_SKILL", aliases: ["criatividade", "criativo", "criativa"] },
 ];
 
 export function normalize(text: string) {
@@ -78,7 +89,7 @@ export function detectSkills(text: string): { name: string; category: SkillCateg
   return found;
 }
 
-type ResumeSection = "SKILLS" | "EXPERIENCE" | "PROJECTS" | "OTHER";
+type ResumeSection = "SKILLS" | "EXPERIENCE" | "PROJECTS" | "COURSES" | "OTHER";
 
 const SECTION_HEADERS: { section: ResumeSection; re: RegExp }[] = [
   {
@@ -91,8 +102,12 @@ const SECTION_HEADERS: { section: ResumeSection; re: RegExp }[] = [
   },
   { section: "PROJECTS", re: /^(projetos|portf[óo]lio)\b/i },
   {
+    section: "COURSES",
+    re: /^(cursos?|capacita[çc][õo]es|treinamentos?|certifica[çc][õo]es|certificados?|qualifica[çc][õo]es)\b/i,
+  },
+  {
     section: "OTHER",
-    re: /^(forma[çc][ãa]o|educa[çc][ãa]o|certifica[çc][õo]es|certificados|cursos|idiomas|objetivo|resumo|sobre|contato|dados pessoais|qualifica[çc][õo]es)\b/i,
+    re: /^(forma[çc][ãa]o|educa[çc][ãa]o|idiomas|objetivo|resumo|sobre|contato|dados pessoais)\b/i,
   },
 ];
 
@@ -131,7 +146,7 @@ export function detectResumeSkills(
       break;
     }
     if (isHeader) continue;
-    if (section === "SKILLS" || section === "EXPERIENCE" || section === "PROJECTS") {
+    if (section && section !== "OTHER") {
       scan(line);
     }
   }

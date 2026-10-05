@@ -9,6 +9,7 @@ Plataforma de recrutamento e desenvolvimento profissional focada em tecnologia e
 - Prisma + SQLite
 - Autenticação por sessão (cookie httpOnly)
 - IA com provider plugável (`mock` por padrão; `openai-compat` via env)
+- Execução de código isolada em Docker (fallback para host com `CODE_RUNNER=host`)
 
 ## Como rodar
 
@@ -29,6 +30,17 @@ Acesse http://localhost:3000
 | Candidato | maria@talentbridge.dev    |
 | Candidato | pedro@talentbridge.dev    |
 | Empresa   | empresa@talentbridge.dev  |
+
+## Execução de código (testes práticos)
+
+O runner executa o código do candidato em container isolado (`--network none`, 256 MB, 0.5 CPU, timeout de 20s). As imagens são baixadas no primeiro uso:
+
+- `php:8.3-cli`
+- `node:20-alpine`
+- `python:3.12-alpine`
+- `eclipse-temurin:21-jdk`
+
+Sem Docker, defina `CODE_RUNNER=host` no `.env` (executa direto no sistema, com timeout de 5s).
 
 ## Conceito central
 

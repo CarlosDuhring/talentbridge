@@ -6,6 +6,9 @@ import type { ResumeAnalysisData } from "./ai/types";
 
 export const MAX_RESUME_SIZE = 8 * 1024 * 1024;
 
+const MIME_DOCX =
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document";
+
 export type ResumeProcessResult = {
   resumeId: string;
   provider: string;
@@ -32,6 +35,9 @@ export async function processResume(
       candidateId,
       fileName,
       fileType,
+      mimeType: fileType === "PDF" ? "application/pdf" : MIME_DOCX,
+      fileData: buffer.toString("base64"),
+      hasFile: true,
       rawText: text.slice(0, 100000),
     },
   });
@@ -115,7 +121,8 @@ export async function confirmResumeSkills(
       candidateId,
       skill.id,
       "INFORMED",
-      s.evidence || "Confirmado pelo candidato"
+      s.evidence || "Confirmado pelo candidato",
+      "CURRICULO"
     );
   }
   return skills.length;

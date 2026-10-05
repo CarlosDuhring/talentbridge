@@ -127,6 +127,9 @@ model Resume {
   candidateId String
   fileName    String
   fileType    String
+  mimeType    String?
+  fileData    String?
+  hasFile     Boolean  @default(false)
   rawText     String
   uploadedAt  DateTime @default(now())
 
@@ -161,6 +164,7 @@ model CandidateSkill {
   candidateId String
   skillId     String
   source      String
+  origin      String?
   evidence    String?
   createdAt   DateTime @default(now())
 

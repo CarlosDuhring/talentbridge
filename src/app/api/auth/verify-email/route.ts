@@ -79,6 +79,6 @@ export async function POST(req: Request) {
 
   return NextResponse.json({
     ok: true,
-    redirect: user.role === "CANDIDATE" ? "/candidato" : "/empresa",
+    redirect: user.role === "CANDIDATE" ? "/candidato/boas-vindas" : "/empresa",
   });
 }

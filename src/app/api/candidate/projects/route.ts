@@ -41,7 +41,8 @@ export async function POST(req: Request) {
       session.profile.id,
       skill.id,
       "INFORMED",
-      `Projeto: ${parsed.data.name}`
+      `Projeto: ${parsed.data.name}`,
+      "PROJETO"
     );
   }
 

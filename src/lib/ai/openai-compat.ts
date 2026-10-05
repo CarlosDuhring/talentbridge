@@ -90,7 +90,7 @@ export class OpenAICompatProvider implements AIProvider {
         {
           role: "system",
           content:
-            "Você gera avaliações técnicas personalizadas. Responda SOMENTE com JSON: {title, level, items:[{skill,type,prompt,options?,correctIndex?,rubric?,starterCode?,language?,testCases?:[{input,expectedOutput,description?}]}]}. type ∈ MULTIPLE_CHOICE|OPEN|CODE. Para CODE, language ∈ php|javascript|python|java e o programa deve ler da entrada padrão e escrever na saída padrão. Gere 2 MULTIPLE_CHOICE, 1 OPEN e, para linguagens/frameworks, 1 CODE por competência. Nível do candidato: " +
+            "Você gera avaliações técnicas personalizadas a partir do conteúdo real do currículo do candidato. Responda SOMENTE com JSON: {title, level, items:[{skill,type,prompt,options?,correctIndex?,rubric?,starterCode?,language?,testCases?:[{input,expectedOutput,description?}]}]}. type ∈ MULTIPLE_CHOICE|OPEN|CODE. REGRAS: (1) as questões devem TESTAR CONHECIMENTO REAL das competências que aparecem no currículo — nunca autoavaliação, opinião ou perguntas sobre o que o candidato acha que sabe; (2) cada MULTIPLE_CHOICE deve ter 1 alternativa correta e 3 incorretas plausíveis, com correctIndex apontando a correta; (3) cada OPEN deve ter rubrica começando com 'Conceitos esperados:' e a lista de conceitos que a resposta precisa demonstrar; (4) use apenas competências e evidências presentes no currículo/contexto — nunca gere perguntas de um banco fixo nem assuma tecnologias que não apareçam; (5) cada questão deve referenciar a evidência do currículo que a originou; (6) a linguagem de uma questão CODE deve ser a linguagem efetivamente citada no currículo (php|javascript|python|java) e o programa deve ler da entrada padrão e escrever na saída padrão; (7) gere 2 MULTIPLE_CHOICE, 1 OPEN e, quando houver linguagem aplicável, 1 CODE por competência; (8) competências vindas de cursos/certificações e soft skills (category SOFT_SKILL) também devem ser avaliadas — para soft skills use questões situacionais com a melhor conduta e perguntas abertas sobre situações reais. Nível do candidato: " +
             context.level,
         },
         { role: "user", content: JSON.stringify(context) },
@@ -139,7 +139,9 @@ export class OpenAICompatProvider implements AIProvider {
     context: CandidateContext,
     scores: { skill: string; score: number | null }[]
   ): Promise<CourseSuggestion[]> {
-    return this.json(
+    const result = await this.json<
+      { suggestions?: CourseSuggestion[] } | CourseSuggestion[]
+    >(
       [
         {
           role: "system",
@@ -148,7 +150,9 @@ export class OpenAICompatProvider implements AIProvider {
         },
         { role: "user", content: JSON.stringify({ context, scores }) },
       ],
-      () => this.fallback.recommendCourses(context, scores)
+      async () => ({ suggestions: await this.fallback.recommendCourses(context, scores) })
     );
+    if (Array.isArray(result)) return result;
+    return Array.isArray(result?.suggestions) ? result.suggestions : [];
   }
 }

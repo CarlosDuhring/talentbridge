@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/Button";
 
 export function GenerateAssessmentButton({
   hasSkills,
+  label = "Gerar nova avaliação",
 }: {
   hasSkills: boolean;
+  label?: string;
 }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
@@ -30,7 +32,7 @@ export function GenerateAssessmentButton({
   return (
     <div className="flex flex-col items-end gap-2">
       <Button onClick={generate} disabled={loading || !hasSkills}>
-        {loading ? "Gerando com IA..." : "Gerar nova avaliação"}
+        {loading ? "Gerando com IA..." : label}
       </Button>
       {!hasSkills ? (
         <p className="text-xs text-stone">

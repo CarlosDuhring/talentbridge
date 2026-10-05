@@ -4,6 +4,7 @@ export type SkillCategory =
   | "BANCO_DE_DADOS"
   | "FERRAMENTA"
   | "FUNDAMENTO"
+  | "SOFT_SKILL"
   | "OUTRO";
 
 export type ResumeAnalysisData = {
@@ -85,7 +86,18 @@ export type CandidateContext = {
   headline?: string | null;
   objective?: string | null;
   level: string;
-  skills: { name: string; category: string; source: string; evidence?: string | null }[];
+  resume?: {
+    fileName: string;
+    summary: string;
+    text: string;
+  } | null;
+  skills: {
+    name: string;
+    category: string;
+    source: string;
+    origin?: string | null;
+    evidence?: string | null;
+  }[];
   experiences: {
     role: string;
     company: string;

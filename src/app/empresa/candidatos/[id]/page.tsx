@@ -9,6 +9,7 @@ import { Badge, ScoreBadge } from "@/components/ui/Badge";
 import { ProgressBar, scoreBarTone } from "@/components/ui/ProgressBar";
 import { DonutScore, RadarChart } from "@/components/charts/Charts";
 import { ButtonLink } from "@/components/ui/Button";
+import { originLabel } from "@/lib/origins";
 
 export default async function CandidateProfilePage({
   params,
@@ -210,6 +211,57 @@ export default async function CandidateProfilePage({
 
           <Card>
             <CardHeader
+              title="Currículo"
+              subtitle="Texto extraído pela IA e arquivo original enviado pelo candidato."
+            />
+            <CardBody className="space-y-4">
+              {candidate.resumes.length === 0 ? (
+                <p className="text-sm text-graphite">
+                  Nenhum currículo enviado por este candidato.
+                </p>
+              ) : (
+                candidate.resumes.map((r) => (
+                  <div
+                    key={r.id}
+                    className="rounded-lg border border-black/[0.06] p-3"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div>
+                        <p className="text-sm font-medium">{r.fileName}</p>
+                        <p className="text-xs text-stone">
+                          {r.fileType} · enviado em{" "}
+                          {new Date(r.uploadedAt).toLocaleDateString("pt-BR")}
+                        </p>
+                      </div>
+                      {r.hasFile ? (
+                        <a
+                          href={`/api/company/resumes/${r.id}`}
+                          className="text-sm font-medium text-notion-blue hover:underline"
+                        >
+                          Baixar arquivo
+                        </a>
+                      ) : (
+                        <span className="text-xs text-stone">
+                          Arquivo indisponível
+                        </span>
+                      )}
+                    </div>
+                    <details className="mt-2">
+                      <summary className="cursor-pointer text-xs font-medium text-graphite hover:text-black">
+                        Ver texto extraído
+                      </summary>
+                      <pre className="mt-2 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-black/[0.03] p-3 text-xs text-graphite">
+                        {r.rawText}
+                      </pre>
+                    </details>
+                  </div>
+                ))
+              )}
+            </CardBody>
+          </Card>
+
+          <Card>
+            <CardHeader
               title="Informado vs. comprovado"
               subtitle="Transparência sobre a origem de cada competência."
             />
@@ -225,11 +277,14 @@ export default async function CandidateProfilePage({
                     {s} · lacuna
                   </Badge>
                 ))}
-                {notAssessed.map((s) => (
-                  <Badge key={s} tone="yellow">
-                    {s} · informada
-                  </Badge>
-                ))}
+                {notAssessed.map((s) => {
+                  const o = originLabel(s.origin);
+                  return (
+                    <Badge key={s.name} tone="yellow">
+                      {s.name} · informada{o ? ` (${o})` : ""}
+                    </Badge>
+                  );
+                })}
               </div>
               <p className="mt-3 text-xs text-stone">
                 {informed.length} competência(s) informada(s) no perfil ·{" "}
