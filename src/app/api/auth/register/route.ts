@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { randomInt } from "crypto";
 import { z } from "zod";
 import { prisma } from "@/lib/db";
-import { hashPassword } from "@/lib/auth";
+import { hashPassword, verifyPassword } from "@/lib/auth";
 import { audit } from "@/lib/audit";
 import { validateStrongPassword } from "@/lib/password";
 import { MAX_RESUME_SIZE, processResume } from "@/lib/resume-service";
@@ -15,6 +15,7 @@ const schema = z.object({
   name: z.string().min(2, "Informe seu nome completo"),
   email: z.string().email("E-mail inválido"),
   password: z.string().min(1, "Informe uma senha"),
+  passwordConfirm: z.string().optional(),
   role: z.enum(["CANDIDATE", "COMPANY"]),
   companyName: z.string().optional(),
   phone: z.string().optional(),
@@ -54,6 +55,13 @@ export async function POST(req: Request) {
   }
   const { name, email, password, role, companyName, phone } = parsed.data;
 
+  if (parsed.data.passwordConfirm !== undefined && parsed.data.passwordConfirm !== password) {
+    return NextResponse.json(
+      { error: "As senhas não coincidem." },
+      { status: 400 }
+    );
+  }
+
   const passwordError = validateStrongPassword(password);
   if (passwordError) {
     return NextResponse.json({ error: passwordError }, { status: 400 });
@@ -72,16 +80,75 @@ export async function POST(req: Request) {
     );
   }
 
-  const existing = await prisma.user.findUnique({ where: { email } });
-  if (existing) {
-    return NextResponse.json(
-      { error: "Já existe uma conta com este e-mail." },
-      { status: 409 }
-    );
-  }
+  const existing = await prisma.user.findUnique({
+    where: { email },
+    include: { candidate: true },
+  });
 
   const code = generateCode();
   const verificationExpiresAt = new Date(Date.now() + CODE_TTL_MINUTES * 60 * 1000);
+
+  if (existing) {
+    if (existing.emailVerified) {
+      return NextResponse.json(
+        { error: "Já existe uma conta com este e-mail." },
+        { status: 409 }
+      );
+    }
+    if (!(await verifyPassword(password, existing.passwordHash))) {
+      return NextResponse.json(
+        {
+          error:
+            "Já existe um cadastro com este e-mail aguardando verificação. Use a mesma senha para continuar.",
+        },
+        { status: 409 }
+      );
+    }
+
+    await prisma.user.update({
+      where: { id: existing.id },
+      data: { verificationCode: code, verificationExpiresAt },
+    });
+
+    let resumeAnalysis = null;
+    if (role === "CANDIDATE" && resumeFile && existing.candidate) {
+      try {
+        const buffer = Buffer.from(await resumeFile.arrayBuffer());
+        const result = await processResume(
+          existing.candidate.id,
+          buffer,
+          resumeFile.name
+        );
+        resumeAnalysis = result.analysis;
+        await audit(
+          existing.id,
+          "RESUME_UPLOAD",
+          "Resume",
+          result.resumeId,
+          `Análise via ${result.provider} (retomada de cadastro)`
+        );
+      } catch (err) {
+        return NextResponse.json(
+          {
+            error:
+              err instanceof Error
+                ? err.message
+                : "Falha ao analisar o currículo. Tente novamente.",
+          },
+          { status: 400 }
+        );
+      }
+    }
+
+    return NextResponse.json({
+      ok: true,
+      email,
+      role: existing.role,
+      devCode: code,
+      resumeAnalysis,
+      resumed: true,
+    });
+  }
 
   const user = await prisma.user.create({
     data: {

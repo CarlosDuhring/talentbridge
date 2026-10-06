@@ -7,6 +7,8 @@ import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { Badge, ScoreBadge } from "@/components/ui/Badge";
 import { ProgressBar, scoreBarTone } from "@/components/ui/ProgressBar";
 import { ButtonLink } from "@/components/ui/Button";
+import { GenerateCoursesButton } from "@/components/forms/GenerateCoursesButton";
+import { safeExternalUrl } from "@/lib/url";
 
 export default async function AssessmentResultPage({
   params,
@@ -38,6 +40,16 @@ export default async function AssessmentResultPage({
     entry.scores.push(item.response.score);
     bySkill.set(item.skillId, entry);
   }
+
+  const skillNames = [...bySkill.values()].map((s) => s.name);
+  const recommendations = await prisma.courseRecommendation.findMany({
+    where: {
+      candidateId: session.profile.id,
+      course: { skill: { name: { in: skillNames } } },
+    },
+    include: { course: { include: { skill: true } } },
+    orderBy: [{ priority: "asc" }, { createdAt: "desc" }],
+  });
 
   const total = assessment.items.reduce(
     (acc, i) => acc + (i.response?.score ?? 0),
@@ -154,6 +166,61 @@ export default async function AssessmentResultPage({
         ))}
       </div>
 
+      <div className="mt-8">
+        <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+          <h2 className="text-[20px] font-semibold">Cursos recomendados</h2>
+          <GenerateCoursesButton />
+        </div>
+        {recommendations.length === 0 ? (
+          <Card>
+            <CardBody>
+              <p className="text-sm text-graphite">
+                Gere recomendações para receber cursos focados nas competências
+                desta avaliação.
+              </p>
+            </CardBody>
+          </Card>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {recommendations.map((r) => {
+              const url = safeExternalUrl(r.course.url);
+              return (
+              <Card key={r.id}>
+                <CardBody>
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <h3 className="text-[16px] font-semibold leading-snug">
+                        {r.course.title}
+                      </h3>
+                      <p className="mt-0.5 text-xs text-stone">
+                        {r.course.provider} · {r.course.level} · {r.course.hours}h
+                      </p>
+                    </div>
+                    <Badge tone="sky">{r.course.skill.name}</Badge>
+                  </div>
+                  <p className="mt-3 text-sm text-graphite">{r.reason}</p>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-block text-sm font-medium text-notion-blue hover:underline"
+                    >
+                      Acessar curso →
+                    </a>
+                  ) : (
+                    <p className="mt-3 text-xs text-stone">
+                      Link indisponível para este curso.
+                    </p>
+                  )}
+                </CardBody>
+              </Card>
+              );
+            })}
+          </div>
+        )}
+      </div>
+
       <div className="mt-6 flex gap-3">
         <ButtonLink href="/candidato/competencias" variant="ghost">
           Ver competências atualizadas
@@ -162,7 +229,7 @@ export default async function AssessmentResultPage({
           href="/candidato/cursos"
           className="inline-flex items-center text-sm font-medium text-notion-blue hover:underline"
         >
-          Ver cursos recomendados →
+          Ver todos os cursos recomendados →
         </Link>
       </div>
     </div>

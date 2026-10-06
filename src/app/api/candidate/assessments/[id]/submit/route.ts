@@ -6,6 +6,7 @@ import { getAIProvider } from "@/lib/ai";
 import { runTestCases, type TestCase } from "@/lib/runner";
 import { recomputeSkillScores } from "@/lib/scoring";
 import { refreshCandidateAcrossJobs } from "@/lib/eligibility";
+import { generateCourseRecommendations } from "@/lib/courses";
 import { audit } from "@/lib/audit";
 
 export const maxDuration = 120;
@@ -53,41 +54,48 @@ export async function POST(
     let feedback = "";
     let breakdown = "";
 
-    if (item.type === "MULTIPLE_CHOICE") {
-      const chosen = parseInt(answer, 10);
-      const correct = chosen === item.correctIndex;
-      score = correct ? 100 : 0;
-      feedback = correct
-        ? "Resposta correta."
-        : `Resposta incorreta. Alternativa correta: ${String.fromCharCode(65 + (item.correctIndex ?? 0))}.`;
-      breakdown = "Correção automática";
-    } else if (item.type === "OPEN") {
-      const result = await ai.gradeOpenAnswer(
-        item.prompt,
-        item.rubric ?? "",
-        answer
-      );
-      score = result.score;
-      feedback = result.feedback;
-      breakdown = result.breakdown ?? "";
-    } else if (item.type === "CODE") {
-      const cases: TestCase[] = item.testCases ? JSON.parse(item.testCases) : [];
-      const summary = await runTestCases(item.language ?? "javascript", answer, cases);
-      const result = await ai.analyzeCode(
-        item.prompt,
-        item.language ?? "javascript",
-        answer,
-        {
-          passed: summary.passed,
-          total: summary.total,
-          failures: summary.failures,
-        }
-      );
-      score = result.score;
-      feedback = result.feedback;
-      breakdown = `${result.breakdown ?? ""} · Casos: ${summary.results
-        .map((r) => (r.passed ? "✓" : "✗"))
-        .join(" ")}`;
+    try {
+      if (item.type === "MULTIPLE_CHOICE") {
+        const chosen = parseInt(answer, 10);
+        const correct = chosen === item.correctIndex;
+        score = correct ? 100 : 0;
+        feedback = correct
+          ? "Resposta correta."
+          : `Resposta incorreta. Alternativa correta: ${String.fromCharCode(65 + (item.correctIndex ?? 0))}.`;
+        breakdown = "Correção automática";
+      } else if (item.type === "OPEN") {
+        const result = await ai.gradeOpenAnswer(
+          item.prompt,
+          item.rubric ?? "",
+          answer
+        );
+        score = result.score;
+        feedback = result.feedback;
+        breakdown = result.breakdown ?? "";
+      } else if (item.type === "CODE") {
+        const cases: TestCase[] = item.testCases ? JSON.parse(item.testCases) : [];
+        const summary = await runTestCases(item.language ?? "javascript", answer, cases);
+        const result = await ai.analyzeCode(
+          item.prompt,
+          item.language ?? "javascript",
+          answer,
+          {
+            passed: summary.passed,
+            total: summary.total,
+            failures: summary.failures,
+          }
+        );
+        score = result.score;
+        feedback = result.feedback;
+        breakdown = `${result.breakdown ?? ""} · Casos: ${summary.results
+          .map((r) => (r.passed ? "✓" : "✗"))
+          .join(" ")}`;
+      }
+    } catch {
+      score = 0;
+      feedback =
+        "Não foi possível corrigir automaticamente este item. A avaliação foi concluída e o item conta como não pontuado.";
+      breakdown = "Falha na correção automática";
     }
 
     await prisma.assessmentResponse.upsert({
@@ -104,6 +112,11 @@ export async function POST(
 
   await recomputeSkillScores(session.profile.id);
   await refreshCandidateAcrossJobs(session.profile.id);
+  try {
+    await generateCourseRecommendations(session.profile.id);
+  } catch {
+    /* recomendações são complementares; a conclusão da avaliação não depende delas */
+  }
   await audit(
     session.user.id,
     "ASSESSMENT_COMPLETED",

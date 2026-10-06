@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/components/ui/Button";
@@ -18,6 +18,25 @@ type Analysis = {
   education: { course: string; institution: string }[];
 };
 
+const PENDING_KEY = "tb_pending_registration";
+
+type PendingRegistration = {
+  email: string;
+  devCode: string;
+  analysis: Analysis | null;
+  selected: string[];
+};
+
+function readPending(): PendingRegistration | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.sessionStorage.getItem(PENDING_KEY);
+    return raw ? (JSON.parse(raw) as PendingRegistration) : null;
+  } catch {
+    return null;
+  }
+}
+
 const LOADING_STEPS = [
   "Criando sua conta",
   "Lendo o currículo",
@@ -33,6 +52,7 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
   const [companyName, setCompanyName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [passwordConfirm, setPasswordConfirm] = useState("");
   const [phone, setPhone] = useState("");
   const [resume, setResume] = useState<File | null>(null);
   const [code, setCode] = useState("");
@@ -42,6 +62,16 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [loadingStep, setLoadingStep] = useState(0);
+
+  useEffect(() => {
+    const pending = readPending();
+    if (!pending) return;
+    setEmail(pending.email);
+    setDevCode(pending.devCode);
+    setAnalysis(pending.analysis);
+    setSelected(new Set(pending.selected));
+    setStep("verify");
+  }, []);
 
   const passwordChecks = useMemo(
     () => PASSWORD_RULES.map((rule) => ({ ...rule, ok: rule.test(password) })),
@@ -64,6 +94,10 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
       setError("A senha ainda não atende a todos os requisitos.");
       return;
     }
+    if (password !== passwordConfirm) {
+      setError("As senhas não coincidem.");
+      return;
+    }
     if (role === "CANDIDATE" && !resume) {
       setError("Anexe seu currículo (PDF ou DOCX) para criar a conta.");
       return;
@@ -76,6 +110,7 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
     formData.append("name", name);
     formData.append("email", email);
     formData.append("password", password);
+    formData.append("passwordConfirm", passwordConfirm);
     formData.append("role", role);
     if (role === "COMPANY") formData.append("companyName", companyName);
     if (role === "CANDIDATE") {
@@ -104,7 +139,21 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
     setDevCode(data.devCode ?? "");
     const result: Analysis | null = data.resumeAnalysis ?? null;
     setAnalysis(result);
-    setSelected(new Set(result?.skills.map((s) => s.name) ?? []));
+    const selectedNames = result?.skills.map((s) => s.name) ?? [];
+    setSelected(new Set(selectedNames));
+    try {
+      window.sessionStorage.setItem(
+        PENDING_KEY,
+        JSON.stringify({
+          email,
+          devCode: data.devCode ?? "",
+          analysis: result,
+          selected: selectedNames,
+        } satisfies PendingRegistration)
+      );
+    } catch {
+      /* sessionStorage indisponível */
+    }
     setStep("verify");
   }
 
@@ -125,6 +174,11 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
     if (!res.ok) {
       setError(data.error ?? "Erro ao verificar o código.");
       return;
+    }
+    try {
+      window.sessionStorage.removeItem(PENDING_KEY);
+    } catch {
+      /* sessionStorage indisponível */
     }
     router.push(data.redirect);
     router.refresh();
@@ -326,6 +380,16 @@ export function RegisterForm({ role }: { role: "CANDIDATE" | "COMPANY" }) {
             </li>
           ))}
         </ul>
+      </Field>
+      <Field label="Confirmar senha" required>
+        <Input
+          type="password"
+          value={passwordConfirm}
+          onChange={(e) => setPasswordConfirm(e.target.value)}
+          placeholder="••••••••"
+          required
+          autoComplete="new-password"
+        />
       </Field>
 
       {role === "CANDIDATE" ? (

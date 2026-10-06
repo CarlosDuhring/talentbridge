@@ -5,33 +5,34 @@ import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
-import { GenerateAssessmentButton } from "@/components/forms/GenerateAssessmentButton";
+import { AssessmentSkillPicker } from "@/components/forms/AssessmentSkillPicker";
 
 export default async function AssessmentsPage() {
   const session = await requireCandidate();
   if (!session) return null;
 
-  const [assessments, skillCount] = await Promise.all([
-    prisma.assessment.findMany({
-      where: { candidateId: session.profile.id },
-      include: { items: true },
-      orderBy: { createdAt: "desc" },
-    }),
-    prisma.candidateSkill.count({ where: { candidateId: session.profile.id } }),
-  ]);
+  const assessments = await prisma.assessment.findMany({
+    where: { candidateId: session.profile.id },
+    include: { items: true },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <div>
       <PageHeader
         title="Avaliações"
-        subtitle="Avaliações personalizadas geradas por IA a partir do seu perfil, com correção automática e feedback."
-        action={<GenerateAssessmentButton hasSkills={skillCount > 0} />}
+        subtitle="Escolha uma competência, responda 10 questões e receba uma pontuação de 0 a 100."
       />
 
+      <div className="mb-8">
+        <AssessmentSkillPicker />
+      </div>
+
+      <h2 className="mb-3 text-[20px] font-semibold">Suas avaliações</h2>
       {assessments.length === 0 ? (
         <EmptyState
           title="Nenhuma avaliação ainda"
-          description="Gere uma avaliação personalizada. Ela combina questões de múltipla escolha, respostas abertas e desafios de código conforme suas competências."
+          description="Escolha uma competência acima para começar. Cada avaliação tem 10 questões e gera uma pontuação."
         />
       ) : (
         <div className="space-y-3">

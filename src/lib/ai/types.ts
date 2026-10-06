@@ -5,6 +5,7 @@ export type SkillCategory =
   | "FERRAMENTA"
   | "FUNDAMENTO"
   | "SOFT_SKILL"
+  | "IDIOMA"
   | "OUTRO";
 
 export type ResumeAnalysisData = {
@@ -63,6 +64,11 @@ export type AssessmentDraft = {
   items: AssessmentItemDraft[];
 };
 
+export type AssessmentOptions = {
+  skill?: string;
+  questionCount?: number;
+};
+
 export type GradeResult = {
   score: number;
   feedback: string;
@@ -112,7 +118,10 @@ export interface AIProvider {
   readonly name: string;
   analyzeResume(rawText: string): Promise<ResumeAnalysisData>;
   analyzeJob(description: string, title: string): Promise<JobAnalysisData>;
-  generateAssessment(context: CandidateContext): Promise<AssessmentDraft>;
+  generateAssessment(
+    context: CandidateContext,
+    options?: AssessmentOptions
+  ): Promise<AssessmentDraft>;
   gradeOpenAnswer(
     prompt: string,
     rubric: string,

@@ -12,13 +12,15 @@ type Analysis = {
   skills: Skill[];
   experiences: { role: string; company: string }[];
   education: { course: string; institution: string }[];
+  courses: { name: string; issuer?: string }[];
   certifications: { name: string }[];
   projects: { name: string }[];
 };
 
 const LOADING_STEPS = [
   "Lendo o arquivo",
-  "Identificando competências com IA",
+  "Extraindo texto do currículo",
+  "Identificando competências, cursos e formação",
   "Preparando a revisão",
 ];
 
@@ -51,7 +53,7 @@ export function ResumeUpload() {
     setSaved(false);
     const timer = setInterval(() => {
       setLoadingStep((s) => Math.min(s + 1, LOADING_STEPS.length - 1));
-    }, 1200);
+    }, 1400);
     const formData = new FormData();
     formData.append("file", file);
     const res = await fetch("/api/candidate/resume", {
@@ -220,6 +222,35 @@ export function ResumeUpload() {
                   <ul className="mt-1 list-inside list-disc text-graphite">
                     {analysis.education.slice(0, 3).map((e, i) => (
                       <li key={i}>{e.course}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {analysis.courses.length > 0 ? (
+                <div>
+                  <p className="text-[13px] font-medium text-black/80">
+                    Cursos ({analysis.courses.length})
+                  </p>
+                  <ul className="mt-1 list-inside list-disc text-graphite">
+                    {analysis.courses.slice(0, 5).map((c, i) => (
+                      <li key={i}>
+                        {c.name}
+                        {c.issuer ? (
+                          <span className="text-stone"> — {c.issuer}</span>
+                        ) : null}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              {analysis.certifications.length > 0 ? (
+                <div>
+                  <p className="text-[13px] font-medium text-black/80">
+                    Certificações ({analysis.certifications.length})
+                  </p>
+                  <ul className="mt-1 list-inside list-disc text-graphite">
+                    {analysis.certifications.slice(0, 5).map((c, i) => (
+                      <li key={i}>{c.name}</li>
                     ))}
                   </ul>
                 </div>

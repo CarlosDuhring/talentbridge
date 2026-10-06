@@ -3,22 +3,16 @@ import { prisma } from "@/lib/db";
 import { PageHeader } from "@/components/ui/PageHeader";
 import { Card, CardBody, CardHeader } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
-import { GenerateAssessmentButton } from "@/components/forms/GenerateAssessmentButton";
 import { SkipAssessmentButton } from "@/components/forms/SkipAssessmentButton";
 
 export default async function WelcomeAssessmentPage() {
   const session = await requireCandidate();
   if (!session) return null;
 
-  const [informedCount, pending] = await Promise.all([
-    prisma.candidateSkill.count({
-      where: { candidateId: session.profile.id, source: "INFORMED" },
-    }),
-    prisma.assessment.findFirst({
-      where: { candidateId: session.profile.id, status: "PENDING" },
-      orderBy: { createdAt: "desc" },
-    }),
-  ]);
+  const pending = await prisma.assessment.findFirst({
+    where: { candidateId: session.profile.id, status: "PENDING" },
+    orderBy: { createdAt: "desc" },
+  });
 
   return (
     <div>
@@ -30,14 +24,13 @@ export default async function WelcomeAssessmentPage() {
       <Card>
         <CardHeader
           title="Deseja fazer seus testes de competências agora?"
-          subtitle="As questões são geradas pela IA com base no que está no seu currículo — nada de banco de perguntas pronto. Você pode pular e fazer quando quiser."
+          subtitle="Escolha uma competência, responda 10 questões e receba uma pontuação de 0 a 100. Você pode pular e fazer quando quiser."
         />
         <CardBody className="space-y-5">
           <div className="space-y-2 text-sm text-graphite">
             <p>
-              Ao fazer agora, a IA monta uma avaliação com questões de múltipla
-              escolha, resposta aberta e, quando houver linguagem no seu
-              currículo, um desafio de código com correção automática.
+              Cada avaliação foca em uma competência do seu currículo e tem 10
+              questões de múltipla escolha com correção automática.
             </p>
             <p>
               Suas competências só ficam <strong>comprovadas</strong> depois dos
@@ -55,7 +48,7 @@ export default async function WelcomeAssessmentPage() {
             </div>
           ) : (
             <div className="flex flex-wrap items-center gap-3">
-              <GenerateAssessmentButton hasSkills={informedCount > 0} label="Fazer agora" />
+              <ButtonLink href="/candidato/avaliacoes">Escolher competência</ButtonLink>
               <SkipAssessmentButton />
             </div>
           )}

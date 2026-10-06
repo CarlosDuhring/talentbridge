@@ -5,6 +5,7 @@ import { Card, CardBody } from "@/components/ui/Card";
 import { Badge } from "@/components/ui/Badge";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { GenerateCoursesButton } from "@/components/forms/GenerateCoursesButton";
+import { safeExternalUrl } from "@/lib/url";
 
 const priorityLabel: Record<number, { label: string; tone: "red" | "yellow" | "blue" }> = {
   1: { label: "Prioridade alta", tone: "red" },
@@ -39,6 +40,7 @@ export default async function CoursesPage() {
         <div className="grid gap-4 md:grid-cols-2">
           {recommendations.map((r) => {
             const p = priorityLabel[r.priority] ?? priorityLabel[3];
+            const url = safeExternalUrl(r.course.url);
             return (
               <Card key={r.id}>
                 <CardBody>
@@ -57,14 +59,20 @@ export default async function CoursesPage() {
                     <Badge tone="sky">{r.course.skill.name}</Badge>
                   </div>
                   <p className="mt-3 text-sm text-graphite">{r.reason}</p>
-                  <a
-                    href={r.course.url}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="mt-3 inline-block text-sm font-medium text-notion-blue hover:underline"
-                  >
-                    Acessar curso →
-                  </a>
+                  {url ? (
+                    <a
+                      href={url}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="mt-3 inline-block text-sm font-medium text-notion-blue hover:underline"
+                    >
+                      Acessar curso →
+                    </a>
+                  ) : (
+                    <p className="mt-3 text-xs text-stone">
+                      Link indisponível para este curso.
+                    </p>
+                  )}
                 </CardBody>
               </Card>
             );

@@ -1,6 +1,7 @@
 import type {
   AIProvider,
   AssessmentDraft,
+  AssessmentOptions,
   CandidateContext,
   CourseSuggestion,
   GradeResult,
@@ -25,18 +26,45 @@ function monthsBetween(start: string, end?: string | null): number {
   return Math.max(0, diff);
 }
 
+function shuffleItems<T extends { skill: string }>(items: T[]): T[] {
+  const groups = new Map<string, T[]>();
+  for (const item of items) {
+    const list = groups.get(item.skill) ?? [];
+    list.push(item);
+    groups.set(item.skill, list);
+  }
+  const lists = [...groups.values()];
+  const mixed: T[] = [];
+  let remaining = items.length;
+  let depth = 0;
+  while (remaining > 0) {
+    for (const list of lists) {
+      const item = list[depth];
+      if (item) {
+        mixed.push(item);
+        remaining--;
+      }
+    }
+    depth++;
+  }
+  return mixed;
+}
+
+const RESUME_HEADER_WORDS =
+  /curr[íi]culo|curriculum|vitae|desenvolvedor|analista|programador|dados pessoais|forma[çc][ãa]o|experi[êe]ncia|habilidades|compet[êe]ncias|projetos|cursos?|certifica|idiomas|objetivo|resumo|sobre|contato|linguagens|web|frontend|backend|banco de dados|cloud|devops|infraestrutura|ciberseguran[çc]a|seguran[çc]a|soft skills|frameworks|bibliotecas|mobile|testes/i;
+
 function extractName(text: string): string | undefined {
   const lines = text
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  for (const line of lines.slice(0, 6)) {
+  for (const line of lines) {
     const words = line.split(/\s+/);
     if (
       words.length >= 2 &&
       words.length <= 5 &&
       words.every((w) => /^[A-ZÀ-Ú][a-zà-ú'.-]+$/.test(w)) &&
-      !/currículo|curriculum|vitae|desenvolvedor|analista|programador/i.test(line)
+      !RESUME_HEADER_WORDS.test(line)
     ) {
       return line;
     }
@@ -50,39 +78,41 @@ function extractCertifications(text: string) {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const headerRe = /^(certifica(?:ç|c)(?:ões|ao|ão)|certificados?)\s*:?\s*$/i;
-  const inlineRe = /(certifica(?:ç|c)(?:ão|ões|ao|oes)|certificados?)[ \t]*:?[ \t]*(?:de |do |da |em )?([^\n.]{3,80})/gi;
   const seen = new Set<string>();
 
-  function push(raw: string) {
-    const name = raw.trim().replace(/\s+/g, " ").slice(0, 100);
-    if (name.length < 3) return;
-    const key = name.toLowerCase();
+  function push(name: string, issuer?: string, year?: number) {
+    const clean = name
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/^[-•*]\s*/, "")
+      .slice(0, 100);
+    if (clean.length < 3) return;
+    const key = clean.toLowerCase();
     if (seen.has(key)) return;
     if ([...seen].some((k) => k.includes(key) || key.includes(k))) return;
     seen.add(key);
-    const yearMatch = name.match(/(19|20)\d{2}/);
-    out.push({
-      name,
-      year: yearMatch ? parseInt(yearMatch[0]) : undefined,
-    });
+    out.push({ name: clean, issuer: issuer?.trim() || undefined, year });
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    if (headerRe.test(lines[i])) {
-      for (let j = i + 1; j < lines.length && j <= i + 5; j++) {
-        if (headerRe.test(lines[j])) break;
-        if (/^(experi[êe]ncia|forma[çc][ãa]o|habilidades|projetos|idiomas|objetivo)/i.test(lines[j])) break;
-        push(lines[j].replace(/^[-•*]\s*/, ""));
-      }
-    }
+  for (const line of lines) {
+    if (!/certifica/i.test(line)) continue;
+    const yearMatch = line.match(/(19|20)\d{2}/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+    const stripped = line
+      .replace(/\(?\s*certifica(?:do|ção|cao|dos|ções|oes)?[^)]*\)?/gi, " ")
+      .replace(/^[-•*]\s*/, "")
+      .trim();
+    const parts = stripped
+      .split(/\s+[-–—]\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length === 0) continue;
+    const name = parts[0];
+    const issuer = parts.length > 1 ? parts[parts.length - 1] : undefined;
+    push(name, issuer, year);
   }
 
-  for (const m of text.matchAll(inlineRe)) {
-    if (m[2]) push(m[2]);
-  }
-
-  return out.slice(0, 5);
+  return out.slice(0, 8);
 }
 
 function extractCourses(text: string) {
@@ -91,582 +121,287 @@ function extractCourses(text: string) {
     .split("\n")
     .map((l) => l.trim())
     .filter(Boolean);
-  const headerRe = /^(cursos?|capacita(?:ç|c)(?:ões|ao|ão)|treinamentos?)\s*:?\s*$/i;
-  const inlineRe = /(cursos?|capacita(?:ç|c)(?:ão|ões|ao|oes)|treinamentos?)[ \t]*:?[ \t]*(?:de |do |da |em )?([^\n.]{3,80})/gi;
   const seen = new Set<string>();
+  const isEducation =
+    /ensino (fundamental|m[ée]dio)|gradua[çc][ãa]o|bacharelado|licenciatura|t[ée]cnico em|mestrado|p[óo]s-gradua/i;
+  const isRole =
+    /^(desenvolvedor|programador|analista|engenheiro|estagi[áa]rio|t[ée]cnico|gerente|coordenador|diretor|assistente|consultor|especialista|arquiteto|designer|product|tech lead|est[áa]gio)/i;
 
-  function push(raw: string) {
-    const name = raw.trim().replace(/\s+/g, " ").slice(0, 100);
-    if (name.length < 3) return;
-    if (/^(cursos?|capacita|treinamentos?)$/i.test(name)) return;
-    const key = name.toLowerCase();
+  function push(name: string, issuer?: string, year?: number) {
+    const clean = name
+      .trim()
+      .replace(/\s+/g, " ")
+      .replace(/^[-•*]\s*/, "")
+      .slice(0, 100);
+    if (clean.length < 4) return;
+    if (/^(cursos?|capacita|treinamentos?)$/i.test(clean)) return;
+    const key = clean.toLowerCase();
     if (seen.has(key)) return;
     if ([...seen].some((k) => k.includes(key) || key.includes(k))) return;
     seen.add(key);
-    const yearMatch = name.match(/(19|20)\d{2}/);
-    out.push({
-      name,
-      year: yearMatch ? parseInt(yearMatch[0]) : undefined,
-    });
+    out.push({ name: clean, issuer: issuer?.trim() || undefined, year });
   }
 
-  for (let i = 0; i < lines.length; i++) {
-    if (headerRe.test(lines[i])) {
-      for (let j = i + 1; j < lines.length && j <= i + 6; j++) {
-        if (headerRe.test(lines[j])) break;
-        if (/^(experi[êe]ncia|forma[çc][ãa]o|habilidades|certifica|projetos|idiomas|objetivo)/i.test(lines[j])) break;
-        push(lines[j].replace(/^[-•*]\s*/, ""));
-      }
-    }
+  for (const line of lines) {
+    if (/certifica/i.test(line)) continue;
+    const stripped = line.replace(/^[-•*]\s*/, "").trim();
+    if (stripped.length < 5) continue;
+    if (isEducation.test(stripped) || isRole.test(stripped)) continue;
+    const yearMatch = stripped.match(/(19|20)\d{2}/);
+    const year = yearMatch ? parseInt(yearMatch[0]) : undefined;
+    const parts = stripped
+      .split(/\s+[-–—]\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    if (parts.length < 2) continue;
+    const name = parts[0];
+    const issuer = parts[parts.length - 1];
+    if (name.length < 4 || issuer.length < 2 || issuer.length > 60) continue;
+    push(name, issuer, year);
   }
 
-  for (const m of text.matchAll(inlineRe)) {
-    if (m[2]) push(m[2]);
-  }
-
-  return out.slice(0, 6);
+  return out.slice(0, 8);
 }
 
 function extractEducation(text: string) {
   const out: ResumeAnalysisData["education"] = [];
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
   const re =
-    /(técnico|tecnólogo|bacharelado|licenciatura|graduação|mestrado|pós-graduação|ensino médio)[^\n.]{0,80}/gi;
-  const matches = text.match(re) ?? [];
-  for (const m of matches.slice(0, 4)) {
-    const yearMatch = m.match(/(19|20)\d{2}/);
+    /(t[ée]cnico|tecn[óo]logo|bacharelado|licenciatura|gradua[çc][ãa]o|mestrado|p[óo]s-gradua[çc][ãa]o|ensino m[ée]dio|ensino fundamental)[^\n]{0,100}/i;
+  const seen = new Set<string>();
+
+  for (const line of lines) {
+    const m = line.match(re);
+    if (!m) continue;
+    const raw = m[0].trim();
+    const key = raw.toLowerCase();
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const yearMatch = raw.match(/(19|20)\d{2}/);
+    const parts = raw
+      .split(/\s+[-–—]\s+/)
+      .map((p) => p.trim())
+      .filter(Boolean);
+    const candidates = parts.filter((p) => !p.startsWith("(") && p.length >= 3);
+    let institution = "Instituição identificada no currículo";
+    if (candidates.length > 1) {
+      institution = candidates[candidates.length - 1];
+    } else {
+      const stripped = raw
+        .replace(
+          /^(ensino m[ée]dio|ensino fundamental|t[ée]cnico|tecn[óo]logo|bacharelado|licenciatura|gradua[çc][ãa]o|mestrado|p[óo]s-gradua[çc][ãa]o)\s*(em|com|de)?\s*/i,
+          ""
+        )
+        .trim();
+      if (stripped.length >= 3) institution = stripped;
+    }
     out.push({
-      institution: "Instituição identificada no currículo",
-      course: m.trim(),
-      level: /mestrado|pós/i.test(m)
+      institution,
+      course: raw,
+      level: /mestrado|p[óo]s/i.test(raw)
         ? "PÓS-GRADUAÇÃO"
-        : /bacharelado|licenciatura|graduação|tecnólogo/i.test(m)
+        : /bacharelado|licenciatura|gradua[çc][ãa]o|tecn[óo]logo/i.test(raw)
           ? "GRADUAÇÃO"
-          : /técnico/i.test(m)
+          : /t[ée]cnico/i.test(raw)
             ? "TÉCNICO"
             : "ENSINO_MEDIO",
       endYear: yearMatch ? parseInt(yearMatch[0]) : undefined,
     });
   }
-  return out;
+  return out.slice(0, 5);
 }
 
 function extractExperiences(text: string) {
   const out: ResumeAnalysisData["experiences"] = [];
+  const lines = text
+    .split("\n")
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const startRe =
+    /^(experi[êe]ncia|experi[êe]ncias|hist[óo]rico profissional|atua[çc][ãa]o profissional)\b/i;
+  const stopRe =
+    /^(forma[çc][ãa]o|educa[çc][ãa]o|habilidades|compet[êe]ncias|projetos|portf[óo]lio|cursos?|certifica|idiomas|objetivo|resumo|sobre|contato|dados pessoais)\b/i;
+  let start = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (startRe.test(lines[i])) {
+      start = i + 1;
+      break;
+    }
+  }
+  if (start === -1) return out;
+
   const roleRe =
-    /(desenvolvedor[a]?|programador[a]?|analista|engenheiro[a]?|estagiário[a]?|técnico[a]?)[^\n]{0,60}/gi;
-  const matches = text.match(roleRe) ?? [];
+    /(desenvolvedor[a]?|programador[a]?|analista|engenheiro[a]?|estagi[áa]rio[a]?|t[ée]cnico[a]?|gerente|coordenador[a]?|consultor[a]?|especialista|arquiteto[a]?)[^\n]{0,60}/i;
   const seen = new Set<string>();
-  for (const m of matches.slice(0, 6)) {
-    const role = m.trim().replace(/\s+/g, " ");
+  for (let i = start; i < lines.length; i++) {
+    if (stopRe.test(lines[i])) break;
+    const m = lines[i].match(roleRe);
+    if (!m) continue;
+    const role = m[0].trim().replace(/\s+/g, " ");
     if (seen.has(role.toLowerCase())) continue;
     seen.add(role.toLowerCase());
-    const years = m.match(/(\d+)\s*(anos?|ano)/i);
+    const years = lines[i].match(/(\d+)\s*(anos?|ano)/i);
     const months = years ? parseInt(years[1]) * 12 : 12;
-    const start = new Date();
-    start.setMonth(start.getMonth() - months);
+    const startDate = new Date();
+    startDate.setMonth(startDate.getMonth() - months);
     out.push({
       company: "Empresa identificada no currículo",
       role,
-      startDate: start.toISOString().slice(0, 10),
-      current: /atual|presente/i.test(text),
-      technologies: detectSkills(m).map((s) => s.name),
+      startDate: startDate.toISOString().slice(0, 10),
+      current: /atual|presente/i.test(lines[i]),
+      technologies: detectSkills(lines[i]).map((s) => s.name),
     });
   }
-  return out;
+  return out.slice(0, 6);
 }
 
-const MCQ_BANK: Record<string, { prompt: string; options: string[] }[]> = {
-  PHP: [
-    {
-      prompt: "Qual a diferença entre `==` e `===` no PHP?",
-      options: [
-        "`==` compara apenas valor; `===` compara valor e tipo.",
-        "`===` compara apenas valor; `==` compara valor e tipo.",
-        "Ambos são idênticos.",
-        "`==` só funciona com números.",
-      ],
-    },
-    {
-      prompt: "O que a função `array_map` faz no PHP?",
-      options: [
-        "Aplica um callback a cada elemento e retorna um novo array.",
-        "Ordena o array.",
-        "Remove o último elemento.",
-        "Conta os elementos do array.",
-      ],
-    },
+const CATEGORY_CONCEPTS: Record<string, string[]> = {
+  LINGUAGEM: [
+    "tipagem",
+    "escopo",
+    "estruturas de controle",
+    "funções",
+    "tratamento de erros",
+    "coleções",
   ],
-  JavaScript: [
-    {
-      prompt: "Qual a diferença entre `let`, `const` e `var` em JavaScript?",
-      options: [
-        "`let` e `const` têm escopo de bloco; `var` tem escopo de função.",
-        "`var` tem escopo de bloco; `let` tem escopo global.",
-        "Todos têm o mesmo escopo.",
-        "`const` permite reatribuição.",
-      ],
-    },
-    {
-      prompt: "O que é uma Promise e para que serve?",
-      options: [
-        "Representa um valor que estará disponível no futuro.",
-        "Um tipo de loop assíncrono.",
-        "Uma função que executa imediatamente.",
-        "Um erro de execução.",
-      ],
-    },
+  FRAMEWORK: [
+    "arquitetura",
+    "ciclo de vida",
+    "configuração",
+    "componentes",
+    "roteamento",
+    "boas práticas",
   ],
-  TypeScript: [
-    {
-      prompt: "Para que serve a tipagem estática do TypeScript?",
-      options: [
-        "Detectar erros de tipo em tempo de compilação.",
-        "Deixar a execução mais lenta.",
-        "Substituir os testes automatizados.",
-        "Impedir o uso de funções.",
-      ],
-    },
-    {
-      prompt: "O que uma `interface` no TypeScript define?",
-      options: [
-        "Um contrato de estrutura para objetos.",
-        "Uma classe concreta com implementação.",
-        "Um tipo de laço de repetição.",
-        "Uma biblioteca externa.",
-      ],
-    },
+  BANCO_DE_DADOS: [
+    "modelagem",
+    "consultas",
+    "índices",
+    "transações",
+    "integridade referencial",
+    "otimização",
   ],
-  MySQL: [
-    {
-      prompt: "Qual cláusula SQL é usada para filtrar resultados de um `GROUP BY`?",
-      options: ["`HAVING`.", "`WHERE`.", "`ORDER BY`.", "`LIMIT`."],
-    },
-    {
-      prompt: "O que um `INNER JOIN` retorna?",
-      options: [
-        "Apenas linhas com correspondência nas duas tabelas.",
-        "Todas as linhas da tabela da esquerda.",
-        "Todas as linhas das duas tabelas, com NULL onde não houver correspondência.",
-        "A união de todas as linhas.",
-      ],
-    },
+  FERRAMENTA: [
+    "instalação",
+    "configuração",
+    "fluxo de trabalho",
+    "automação",
+    "integração",
   ],
-  SQL: [
-    {
-      prompt: "Qual comando SQL remove linhas de uma tabela?",
-      options: ["`DELETE`.", "`DROP`.", "`TRUNCATE`.", "`REMOVE`."],
-    },
-    {
-      prompt: "Para que serve um índice em um banco de dados?",
-      options: [
-        "Acelerar a busca de registros.",
-        "Compactar o banco.",
-        "Criar backup automático.",
-        "Validar tipos de dados.",
-      ],
-    },
+  FUNDAMENTO: [
+    "conceitos",
+    "aplicação prática",
+    "trade-offs",
+    "complexidade",
+    "resolução de problemas",
   ],
-  Laravel: [
-    {
-      prompt: "O que é o Eloquent ORM no Laravel?",
-      options: [
-        "Um ORM que mapeia tabelas para modelos PHP.",
-        "Um sistema de templates.",
-        "Um gerenciador de filas.",
-        "Um servidor web embutido.",
-      ],
-    },
-    {
-      prompt: "Para que serve o arquivo `.env` em um projeto Laravel?",
-      options: [
-        "Armazenar variáveis de ambiente e configurações sensíveis.",
-        "Definir rotas da aplicação.",
-        "Configurar o banco de dados apenas.",
-        "Listar dependências do projeto.",
-      ],
-    },
+  IDIOMA: [
+    "vocabulário técnico",
+    "leitura",
+    "compreensão",
+    "comunicação",
   ],
-  React: [
-    {
-      prompt: "O que é o estado (state) em React?",
-      options: [
-        "Dados que mudam ao longo do tempo e provocam nova renderização.",
-        "Dados imutáveis vindos do servidor.",
-        "Um arquivo de estilos.",
-        "Uma tabela do banco de dados.",
-      ],
-    },
-    {
-      prompt: "Para que serve o hook `useEffect`?",
-      options: [
-        "Executar efeitos colaterais após a renderização.",
-        "Criar estilos CSS.",
-        "Definir rotas da aplicação.",
-        "Compilar o JSX.",
-      ],
-    },
+  SOFT_SKILL: [
+    "comunicação",
+    "colaboração",
+    "organização",
+    "resolução de conflitos",
+    "empatia",
   ],
-  "Node.js": [
-    {
-      prompt: "O que o event loop do Node.js faz?",
-      options: [
-        "Gerencia callbacks assíncronos e operações de I/O.",
-        "Compila JavaScript para C++.",
-        "Gerencia o banco de dados.",
-        "Cria threads do sistema operacional.",
-      ],
-    },
-    {
-      prompt: "Para que serve o npm?",
-      options: [
-        "Gerenciar dependências e scripts do projeto.",
-        "Executar consultas SQL.",
-        "Hospedar sites estáticos.",
-        "Compilar código Java.",
-      ],
-    },
-  ],
-  Python: [
-    {
-      prompt: "Qual a diferença entre lista e tupla em Python?",
-      options: [
-        "Listas são mutáveis; tuplas são imutáveis.",
-        "Tuplas são mutáveis; listas são imutáveis.",
-        "Ambas são imutáveis.",
-        "Listas só aceitam números.",
-      ],
-    },
-    {
-      prompt: "O que é um generator em Python?",
-      options: [
-        "Uma função que produz valores sob demanda, com `yield`.",
-        "Uma lista infinita.",
-        "Um tipo de classe.",
-        "Um decorator.",
-      ],
-    },
-  ],
-  Java: [
-    {
-      prompt: "Qual a diferença entre `ArrayList` e `LinkedList`?",
-      options: [
-        "`ArrayList` usa array interno; `LinkedList` usa nós encadeados.",
-        "`LinkedList` é sempre mais rápida.",
-        "`ArrayList` não permite remoção.",
-        "Não há diferença prática.",
-      ],
-    },
-    {
-      prompt: "O que é o garbage collector da JVM?",
-      options: [
-        "Gerencia automaticamente a memória de objetos não utilizados.",
-        "Compila o código em tempo de execução.",
-        "Executa threads em paralelo.",
-        "Otimiza consultas SQL.",
-      ],
-    },
-  ],
-  Git: [
-    {
-      prompt: "Qual a diferença entre `git fetch` e `git pull`?",
-      options: [
-        "`fetch` baixa sem mesclar; `pull` baixa e mescla.",
-        "`pull` baixa sem mesclar; `fetch` baixa e mescla.",
-        "Ambos apenas baixam.",
-        "`fetch` envia commits.",
-      ],
-    },
-    {
-      prompt: "Para que serve um branch no Git?",
-      options: [
-        "Isolar linhas de desenvolvimento.",
-        "Fazer backup do repositório.",
-        "Excluir commits antigos.",
-        "Renomear o projeto.",
-      ],
-    },
-  ],
-  Docker: [
-    {
-      prompt: "Qual a diferença entre imagem e container Docker?",
-      options: [
-        "Imagem é o modelo imutável; container é uma instância em execução.",
-        "Container é o modelo; imagem é a instância.",
-        "Ambos são a mesma coisa.",
-        "Imagem só existe em produção.",
-      ],
-    },
-    {
-      prompt: "Para que serve um Dockerfile?",
-      options: [
-        "Definir os passos para construir uma imagem.",
-        "Executar o container.",
-        "Gerenciar volumes.",
-        "Configurar a rede do host.",
-      ],
-    },
-  ],
-  "REST APIs": [
-    {
-      prompt: "O que o método HTTP `GET` deve fazer?",
-      options: [
-        "Obter um recurso sem alterar o estado do servidor.",
-        "Criar um novo recurso.",
-        "Remover um recurso.",
-        "Atualizar um recurso.",
-      ],
-    },
-    {
-      prompt: "Qual código HTTP indica que um recurso não foi encontrado?",
-      options: ["404.", "200.", "500.", "201."],
-    },
-  ],
-  "Testes automatizados": [
-    {
-      prompt: "O que é TDD (Test-Driven Development)?",
-      options: [
-        "Escrever o teste antes do código de produção.",
-        "Testar somente em produção.",
-        "Automatizar o deploy.",
-        "Documentar a API.",
-      ],
-    },
-    {
-      prompt: "Para que serve um teste unitário?",
-      options: [
-        "Validar uma unidade isolada do código.",
-        "Testar o sistema inteiro de ponta a ponta.",
-        "Medir a performance da rede.",
-        "Gerar dados fictícios.",
-      ],
-    },
-  ],
-  "Lógica de programação": [
-    {
-      prompt: "O que significa complexidade de algoritmo O(n log n)?",
-      options: [
-        "Crescimento proporcional a n multiplicado pelo logaritmo de n.",
-        "Crescimento linear.",
-        "Crescimento quadrático.",
-        "Crescimento constante.",
-      ],
-    },
-    {
-      prompt: "Qual estrutura de dados é mais adequada para uma fila FIFO?",
-      options: ["Fila (Queue).", "Pilha (Stack).", "Árvore binária.", "Grafo."],
-    },
-  ],
-  Comunicação: [
-    {
-      prompt: "Um colega não entendeu sua explicação sobre um bug. Qual é a melhor conduta?",
-      options: [
-        "Reformular a explicação com um exemplo concreto e confirmar se ficou claro.",
-        "Repetir a mesma explicação em voz mais alta.",
-        "Ignorar e seguir com a tarefa.",
-        "Pedir para outra pessoa explicar no seu lugar.",
-      ],
-    },
-    {
-      prompt: "Como comunicar um atraso de prazo ao time?",
-      options: [
-        "Avisar assim que identificar o risco, com contexto e um plano de ação.",
-        "Esperar o prazo vencer para não gerar preocupação.",
-        "Dizer que está tudo em dia até o último momento.",
-        "Culpar outra pessoa pelo atraso.",
-      ],
-    },
-  ],
-  "Trabalho em equipe": [
-    {
-      prompt: "Um colega está sobrecarregado e seu prazo também é curto. Qual é a melhor atitude?",
-      options: [
-        "Alinhar prioridades com o time e ajudar no que for possível.",
-        "Focar só nas suas tarefas e ignorar o colega.",
-        "Reclamar com a liderança sobre a carga do colega.",
-        "Assumir todas as tarefas dele sem avisar.",
-      ],
-    },
-    {
-      prompt: "Você discorda da solução técnica de um colega. O que fazer?",
-      options: [
-        "Ouvir os argumentos e decidir com base em dados e no objetivo do time.",
-        "Impor sua solução por ser mais experiente.",
-        "Não opinar para evitar conflito.",
-        "Levar a discussão para o grupo inteiro por mensagem.",
-      ],
-    },
-  ],
-  Liderança: [
-    {
-      prompt: "Você lidera um projeto e o time está desmotivado. Qual a melhor conduta?",
-      options: [
-        "Conversar individualmente, entender as causas e alinhar metas realistas.",
-        "Aumentar a cobrança por resultados.",
-        "Trocar todos os integrantes do time.",
-        "Ignorar, pois motivação é responsabilidade individual.",
-      ],
-    },
-    {
-      prompt: "Como delegar uma tarefa crítica?",
-      options: [
-        "Definir o resultado esperado, dar autonomia e acompanhar com checkpoints.",
-        "Fazer a tarefa você mesmo para garantir a qualidade.",
-        "Delegar sem explicar o contexto.",
-        "Delegar apenas para quem tem menos tarefas, independentemente do perfil.",
-      ],
-    },
-  ],
-  "Resolução de problemas": [
-    {
-      prompt: "Um erro intermitente aparece em produção. Qual a melhor abordagem?",
-      options: [
-        "Reproduzir, coletar evidências e isolar a causa antes de corrigir.",
-        "Reiniciar o servidor e torcer para não voltar.",
-        "Alterar o código aleatoriamente até o erro sumir.",
-        "Ignorar enquanto ninguém reclamar.",
-      ],
-    },
-    {
-      prompt: "Um requisito novo está ambíguo. O que fazer?",
-      options: [
-        "Levantar detalhes com os stakeholders e validar hipóteses antes de codar.",
-        "Implementar a primeira interpretação que vier à cabeça.",
-        "Esperar que o requisito se esclareça sozinho.",
-        "Recusar a tarefa.",
-      ],
-    },
-  ],
-  Proatividade: [
-    {
-      prompt: "Você percebe um problema recorrente que ninguém resolveu. Qual a melhor atitude?",
-      options: [
-        "Investigar, propor uma solução e alinhar com o time antes de agir.",
-        "Esperar alguém mandar você resolver.",
-        "Ignorar, pois não foi você quem criou o problema.",
-        "Reclamar do problema sem propor nada.",
-      ],
-    },
-    {
-      prompt: "Sua tarefa terminou antes do prazo. O que fazer?",
-      options: [
-        "Antecipar a próxima prioridade e oferecer ajuda ao time.",
-        "Ficar ocioso até receber nova tarefa.",
-        "Entregar trabalho incompleto só para ocupar o tempo.",
-        "Sair mais cedo sem avisar.",
-      ],
-    },
-  ],
-  Organização: [
-    {
-      prompt: "Você tem várias tarefas com prazos próximos. Como agir?",
-      options: [
-        "Priorizar por impacto e prazo, quebrar em etapas e acompanhar o progresso.",
-        "Fazer a tarefa mais fácil primeiro, sempre.",
-        "Começar todas ao mesmo tempo.",
-        "Deixar para depois e resolver o urgente no fim.",
-      ],
-    },
-    {
-      prompt: "Qual prática ajuda a manter o trabalho organizado?",
-      options: [
-        "Registrar tarefas, revisar o dia e ajustar prioridades.",
-        "Confiar apenas na memória.",
-        "Anotar tudo em papéis soltos.",
-        "Trabalhar sempre no que aparecer primeiro.",
-      ],
-    },
-  ],
-  "Gestão de tempo": [
-    {
-      prompt: "Prazo curto com muitas demandas. Qual a melhor estratégia?",
-      options: [
-        "Negociar escopo, priorizar o essencial e comunicar riscos cedo.",
-        "Aceitar tudo e tentar fazer no improviso.",
-        "Trabalhar sem intervalos até acabar.",
-        "Não avisar ninguém sobre o risco de atraso.",
-      ],
-    },
-    {
-      prompt: "As reuniões consomem quase todo o seu dia. O que fazer?",
-      options: [
-        "Agrupar reuniões e proteger blocos de foco.",
-        "Recusar todas as reuniões.",
-        "Trabalhar apenas à noite.",
-        "Participar de todas sem objetivo claro.",
-      ],
-    },
-  ],
-  Adaptabilidade: [
-    {
-      prompt: "O projeto mudou de tecnologia no meio do caminho. Qual a melhor atitude?",
-      options: [
-        "Aprender o necessário, adaptar o plano e pedir apoio quando preciso.",
-        "Insistir na tecnologia antiga.",
-        "Desistir do projeto.",
-        "Esperar que outra pessoa resolva a transição.",
-      ],
-    },
-    {
-      prompt: "Um requisito mudou na véspera da entrega. O que fazer?",
-      options: [
-        "Reavaliar o impacto com o time e replanejar o escopo.",
-        "Entregar mesmo assim, ignorando a mudança.",
-        "Prometer o prazo antigo sem avaliar.",
-        "Culpar o cliente pela mudança.",
-      ],
-    },
-  ],
-  "Pensamento crítico": [
-    {
-      prompt: "O time adotou uma solução popular, mas sem dados que comprovem o ganho. O que fazer?",
-      options: [
-        "Questionar premissas, buscar dados e testar antes de decidir.",
-        "Aceitar porque todos concordam.",
-        "Ignorar e seguir sua própria opinião.",
-        "Reprovar de imediato sem avaliar.",
-      ],
-    },
-    {
-      prompt: "Chega um bug reportado sem evidências. Qual a melhor abordagem?",
-      options: [
-        "Validar o cenário, coletar evidências e confirmar a causa antes de corrigir.",
-        "Corrigir o primeiro palpite.",
-        "Fechar o chamado sem análise.",
-        "Pedir para o usuário resolver.",
-      ],
-    },
-  ],
+  OUTRO: ["conceitos", "aplicação prática", "boas práticas", "fundamentos"],
 };
 
-const SKILL_CONCEPTS: Record<string, string[]> = {
-  PHP: ["tipagem", "escopo", "arrays", "funções", "orientação a objetos"],
-  JavaScript: ["escopo", "assincronismo", "promises", "funções", "eventos"],
-  TypeScript: ["tipagem estática", "interfaces", "generics", "tipos"],
-  MySQL: ["consultas", "joins", "índices", "modelagem", "agregação"],
-  SQL: ["select", "joins", "índices", "transações", "normalização"],
-  Laravel: ["eloquent", "rotas", "migrations", "middleware", "mvc"],
-  React: ["componentes", "estado", "props", "hooks", "renderização"],
-  "Node.js": ["event loop", "módulos", "assincronismo", "npm", "streams"],
-  "Next.js": ["rotas", "renderização", "componentes", "ssr", "api routes"],
-  Python: ["listas", "tuplas", "generators", "escopo", "bibliotecas"],
-  Django: ["models", "views", "urls", "orm", "migrations"],
-  Java: ["jvm", "coleções", "orientação a objetos", "exceções", "threads"],
-  "Spring Boot": ["injeção de dependência", "controllers", "jpa", "beans", "rest"],
-  Git: ["branches", "commits", "merge", "rebase", "pull requests"],
-  Docker: ["imagens", "containers", "volumes", "dockerfile", "redes"],
-  "REST APIs": ["recursos", "verbos http", "status codes", "json", "autenticação"],
-  "Testes automatizados": ["testes unitários", "tdd", "mocks", "cobertura", "asserções"],
-  "Lógica de programação": ["algoritmos", "complexidade", "estruturas de dados", "recursão", "iteração"],
-  Comunicação: ["clareza", "escuta ativa", "feedback", "contexto"],
-  "Trabalho em equipe": ["colaboração", "objetivo comum", "feedback", "confiança"],
-  Liderança: ["delegação", "motivação", "feedback", "decisão"],
-  "Resolução de problemas": ["diagnóstico", "causa raiz", "hipóteses", "validação"],
-  Proatividade: ["iniciativa", "antecipação", "solução", "alinhamento"],
-  Organização: ["priorização", "planejamento", "acompanhamento", "prazos"],
-  "Gestão de tempo": ["priorização", "prazos", "foco", "planejamento"],
-  Adaptabilidade: ["flexibilidade", "aprendizado", "mudança", "resiliência"],
-  "Pensamento crítico": ["evidências", "premissas", "análise", "decisão"],
+type SkillRef = {
+  name: string;
+  category: string;
+  evidence?: string | null;
+  origin?: string | null;
 };
+
+type KnowledgeQuestion = {
+  prompt: string;
+  options: string[];
+  correctIndex: number;
+};
+
+function hashString(value: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < value.length; i++) {
+    h ^= value.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+function seededShuffle<T>(arr: T[], seed: number): T[] {
+  const a = [...arr];
+  let s = seed || 1;
+  const next = () => {
+    s = (Math.imul(s, 1664525) + 1013904223) >>> 0;
+    return s / 4294967296;
+  };
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(next() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function rotate<T>(arr: T[], seed: number): T[] {
+  const a = [...arr];
+  const shift = seed % a.length;
+  for (let k = 0; k < shift; k++) a.push(a.shift() as T);
+  return a;
+}
+
+function skillConcepts(skill: SkillRef): string[] {
+  return CATEGORY_CONCEPTS[skill.category] ?? CATEGORY_CONCEPTS.OUTRO;
+}
+
+function knowledgeQuestions(skill: SkillRef, count: number): KnowledgeQuestion[] {
+  const concepts = seededShuffle(
+    skillConcepts(skill),
+    hashString(`concepts:${skill.name}`)
+  );
+  const origin = skill.origin?.trim() || "projetos reais";
+  const questions: KnowledgeQuestion[] = [];
+  for (let i = 0; i < count; i++) {
+    const extra = concepts[i % concepts.length];
+    const seed = hashString(`${skill.name}:${i}`);
+    const correct = `${skill.name} envolve ${extra}, aplicado de forma consistente em ${origin}.`;
+    const options = [
+      correct,
+      `Dominar ${skill.name} não exige ${extra}; basta memorizar a sintaxe básica.`,
+      `${skill.name} dispensa ${extra} e se resume a repetir exemplos prontos.`,
+      `${extra} é irrelevante para ${skill.name} na prática.`,
+    ];
+    const rotated = rotate(options, seed);
+    questions.push({
+      prompt: `Sobre ${skill.name}, qual afirmação está correta?`,
+      options: rotated,
+      correctIndex: rotated.indexOf(correct),
+    });
+  }
+  return questions;
+}
+
+function openItemFor(skill: SkillRef): { prompt: string; rubric: string } {
+  const concepts = skillConcepts(skill).slice(0, 4).join(", ");
+  const evidence = skill.evidence?.trim();
+  const ref = evidence ? `No seu currículo consta: "${evidence}". ` : "";
+  if (skill.category === "SOFT_SKILL") {
+    return {
+      prompt: `${ref}Descreva uma situação real em que você demonstrou ${skill.name}: qual era o contexto, o que você fez e qual foi o resultado?`,
+      rubric: `Conceitos esperados: ${concepts}. A resposta deve apresentar contexto, ação e resultado.`,
+    };
+  }
+  return {
+    prompt: `${ref}Explique ${skill.name} e como você o aplicou em um projeto real. Cite um problema concreto, a solução adotada e o resultado obtido.`,
+    rubric: `Conceitos esperados: ${concepts}. A resposta deve demonstrar definição correta, aplicação prática e resultado.`,
+  };
+}
 
 export class MockProvider implements AIProvider {
   readonly name = "mock";
@@ -688,9 +423,6 @@ export class MockProvider implements AIProvider {
       for (const s of detectSkills(c.name)) {
         add({ ...s, evidence: `Curso/certificação: ${c.name}` });
       }
-    }
-    for (const s of detectSkills(rawText)) {
-      if (s.category === "SOFT_SKILL") add(s);
     }
     const skills = [...merged.values()];
 
@@ -762,12 +494,73 @@ export class MockProvider implements AIProvider {
     };
   }
 
-  async generateAssessment(context: CandidateContext): Promise<AssessmentDraft> {
+  async generateAssessment(
+    context: CandidateContext,
+    options?: AssessmentOptions
+  ): Promise<AssessmentDraft> {
     const level = context.level;
     const items: AssessmentDraft["items"] = [];
 
     const informed = context.skills.filter((s) => s.source === "INFORMED");
     const pool = informed.length > 0 ? informed : context.skills;
+
+    const chosen = options?.skill
+      ? pool.find((s) => s.name === options.skill) ??
+        context.skills.find((s) => s.name === options.skill)
+      : undefined;
+
+    if (chosen) {
+      const count = options?.questionCount ?? 10;
+      const ref: SkillRef = {
+        name: chosen.name,
+        category: chosen.category,
+        evidence: chosen.evidence,
+        origin: chosen.origin,
+      };
+      const evidence = chosen.evidence?.trim();
+      const contextLine = evidence
+        ? `No seu currículo consta: "${evidence}".`
+        : `Competência identificada no seu perfil.`;
+
+      const mcqCount = Math.max(1, count - 1);
+      for (const q of knowledgeQuestions(ref, mcqCount)) {
+        items.push({
+          skill: chosen.name,
+          type: "MULTIPLE_CHOICE",
+          prompt: `${contextLine}\n\n${q.prompt}`,
+          options: q.options,
+          correctIndex: q.correctIndex,
+        });
+      }
+
+      const open = openItemFor(ref);
+      items.push({
+        skill: chosen.name,
+        type: "OPEN",
+        prompt: open.prompt,
+        rubric: open.rubric,
+      });
+
+      const language = this.languageFor(chosen.name);
+      if (language) {
+        const task = this.codeTask(chosen.name, level);
+        items.push({
+          skill: chosen.name,
+          type: "CODE",
+          prompt: `${contextLine}\n\n${task.prompt}`,
+          language,
+          starterCode: task.starterCode,
+          testCases: task.testCases,
+        });
+      }
+
+      return {
+        title: `Avaliação de ${chosen.name} — ${context.name}`,
+        level,
+        items: shuffleItems(items),
+      };
+    }
+
     const byEvidence = (
       a: { evidence?: string | null },
       b: { evidence?: string | null }
@@ -792,43 +585,32 @@ export class MockProvider implements AIProvider {
       const evidence = skill.evidence?.trim();
       const contextLine = evidence
         ? `No seu currículo consta: "${evidence}".`
-        : `Competência identificada em ${resumeRef}.`;
+        : `Competência identificada em ${resumeRef}`;
 
-      let mcqCount = 0;
-      for (let variant = 0; variant < 2; variant++) {
-        const mcq = this.mcqFor(skill.name, variant);
-        if (!mcq) break;
+      const ref: SkillRef = {
+        name: skill.name,
+        category: skill.category,
+        evidence: skill.evidence,
+        origin: skill.origin,
+      };
+
+      for (const q of knowledgeQuestions(ref, 2)) {
         items.push({
           skill: skill.name,
           type: "MULTIPLE_CHOICE",
-          prompt: `${contextLine}\n\n${mcq.prompt}`,
-          options: mcq.options,
-          correctIndex: mcq.correctIndex,
+          prompt: `${contextLine}.\n\n${q.prompt}`,
+          options: q.options,
+          correctIndex: q.correctIndex,
         });
-        mcqCount++;
       }
 
-      const concepts = this.conceptsFor(skill.name);
-      const isSoft = skill.category === "SOFT_SKILL";
+      const open = openItemFor(ref);
       items.push({
         skill: skill.name,
         type: "OPEN",
-        prompt: isSoft
-          ? `Descreva uma situação real em que você demonstrou ${skill.name}. Qual era o contexto, o que você fez e qual foi o resultado?`
-          : `Explique o conceito de ${skill.name} e como você o aplicou em um projeto real. Cite um problema concreto, a solução adotada e o resultado obtido.`,
-        rubric: `Conceitos esperados: ${
-          concepts ?? [skill.name]
-        }. A resposta deve demonstrar definição correta, aplicação prática e resultado.`,
+        prompt: open.prompt,
+        rubric: open.rubric,
       });
-
-      if (mcqCount === 0) {
-        items.push({
-          skill: skill.name,
-          type: "OPEN",
-          prompt: `Descreva uma situação prática em que você usou ${skill.name}: qual era o problema, o que você fez e qual foi o resultado.`,
-          rubric: `Conceitos esperados: ${skill.name}. A resposta deve demonstrar aplicação prática e decisões técnicas.`,
-        });
-      }
 
       const language = this.languageFor(skill.name);
       if (language) {
@@ -836,7 +618,7 @@ export class MockProvider implements AIProvider {
         items.push({
           skill: skill.name,
           type: "CODE",
-          prompt: `${contextLine}\n\n${task.prompt}`,
+          prompt: `${contextLine}.\n\n${task.prompt}`,
           language,
           starterCode: task.starterCode,
           testCases: task.testCases,
@@ -847,27 +629,8 @@ export class MockProvider implements AIProvider {
     return {
       title: `Avaliação personalizada — ${context.name}`,
       level,
-      items,
+      items: shuffleItems(items),
     };
-  }
-
-  private mcqFor(
-    skill: string,
-    variant: number
-  ): { prompt: string; options: string[]; correctIndex: number } | null {
-    const bank = MCQ_BANK[skill];
-    const entry = bank?.[variant];
-    if (!entry) return null;
-    const shift = variant % entry.options.length;
-    const options = [...entry.options];
-    const [correct] = options.splice(0, 1);
-    options.splice(shift, 0, correct);
-    return { prompt: entry.prompt, options, correctIndex: shift };
-  }
-
-  private conceptsFor(skill: string): string | null {
-    const concepts = SKILL_CONCEPTS[skill];
-    return concepts ? concepts.join(", ") : null;
   }
 
   private languageFor(skill: string): string | null {
@@ -950,7 +713,7 @@ export class MockProvider implements AIProvider {
     answer: string
   ): Promise<GradeResult> {
     const words = answer.trim().split(/\s+/).filter(Boolean);
-    const lengthScore = Math.min(40, Math.round((words.length / 80) * 40));
+    const lengthScore = Math.min(20, Math.round((words.length / 60) * 20));
     const expectedMatch = rubric.match(/conceitos esperados:\s*([^.]*)/i);
     const expected = expectedMatch
       ? expectedMatch[1]
@@ -967,11 +730,13 @@ export class MockProvider implements AIProvider {
     const answerNorm = normalize(answer);
     const hits = keywords.filter((k) => answerNorm.includes(normalize(k))).length;
     const keywordScore = keywords.length
-      ? Math.min(45, Math.round((hits / Math.min(keywords.length, 8)) * 45))
-      : 30;
-    const structureScore = /porque|portanto|assim|exemplo|quando|então|logo/i.test(answer)
-      ? 15
-      : 5;
+      ? Math.min(60, Math.round((hits / Math.min(keywords.length, 8)) * 60))
+      : answer.trim()
+        ? 20
+        : 0;
+    const hasExample = /exemplo|projeto|caso|cenário|cenario|na prática|na pratica/i.test(answer);
+    const hasReasoning = /porque|portanto|assim|quando|então|entao|logo|dessa forma|ou seja/i.test(answer);
+    const structureScore = (hasExample ? 12 : 0) + (hasReasoning ? 8 : 0);
     const score = Math.max(0, Math.min(100, lengthScore + keywordScore + structureScore));
     const feedback =
       score >= 80
@@ -982,7 +747,7 @@ export class MockProvider implements AIProvider {
     return {
       score,
       feedback,
-      breakdown: `Extensão: ${lengthScore}/40 · Conceitos: ${keywordScore}/45 · Estrutura: ${structureScore}/15`,
+      breakdown: `Extensão: ${lengthScore}/20 · Conceitos: ${keywordScore}/60 · Estrutura: ${structureScore}/20`,
     };
   }
 
@@ -1106,32 +871,119 @@ export class MockProvider implements AIProvider {
         hours: 25,
         url: "https://www.udemy.com/topic/tdd/",
       },
+      HTML: {
+        title: "HTML5: fundamentos para páginas web modernas",
+        provider: "freeCodeCamp",
+        level: "Iniciante",
+        hours: 20,
+        url: "https://www.freecodecamp.org/learn/responsive-web-design/",
+      },
+      CSS: {
+        title: "CSS: estilização e layout responsivo",
+        provider: "freeCodeCamp",
+        level: "Iniciante",
+        hours: 25,
+        url: "https://www.freecodecamp.org/learn/responsive-web-design/",
+      },
+      Bootstrap: {
+        title: "Bootstrap: interfaces responsivas",
+        provider: "Udemy",
+        level: "Iniciante",
+        hours: 15,
+        url: "https://www.udemy.com/topic/bootstrap/",
+      },
+      Cibersegurança: {
+        title: "Introdução à Cibersegurança",
+        provider: "Cisco NetAcad",
+        level: "Iniciante",
+        hours: 30,
+        url: "https://www.netacad.com/courses/cybersecurity/introduction-cybersecurity",
+      },
+      "Segurança de endpoint": {
+        title: "Segurança de Endpoint",
+        provider: "Cisco NetAcad",
+        level: "Intermediário",
+        hours: 25,
+        url: "https://www.netacad.com/courses/cybersecurity/endpoint-security",
+      },
+      "Defesa de rede": {
+        title: "Defesa de Rede",
+        provider: "Cisco NetAcad",
+        level: "Intermediário",
+        hours: 25,
+        url: "https://www.netacad.com/courses/cybersecurity/network-defense",
+      },
+      Inglês: {
+        title: "Inglês para tecnologia",
+        provider: "Coursera",
+        level: "Iniciante",
+        hours: 40,
+        url: "https://www.alura.com.br/cursos-online-idiomas/ingles",
+      },
+      Comunicação: {
+        title: "Comunicação eficaz no trabalho",
+        provider: "Alura",
+        level: "Iniciante",
+        hours: 10,
+        url: "https://www.alura.com.br/cursos-online-carreira",
+      },
+      "Trabalho em equipe": {
+        title: "Colaboração e trabalho em equipe",
+        provider: "Alura",
+        level: "Iniciante",
+        hours: 8,
+        url: "https://www.alura.com.br/cursos-online-carreira",
+      },
+      Organização: {
+        title: "Organização e produtividade pessoal",
+        provider: "Alura",
+        level: "Iniciante",
+        hours: 8,
+        url: "https://www.alura.com.br/cursos-online-carreira",
+      },
+      Adaptabilidade: {
+        title: "Adaptabilidade e aprendizado contínuo",
+        provider: "Alura",
+        level: "Iniciante",
+        hours: 8,
+        url: "https://www.alura.com.br/cursos-online-carreira",
+      },
+      Comprometimento: {
+        title: "Comprometimento e foco em resultados",
+        provider: "Alura",
+        level: "Iniciante",
+        hours: 8,
+        url: "https://www.alura.com.br/cursos-online-carreira",
+      },
     };
 
     const suggestions: CourseSuggestion[] = [];
     const scoreMap = new Map(scores.map((s) => [s.skill, s.score]));
 
     for (const s of scores) {
+      const c = catalog[s.skill];
+      if (!c) continue;
       if (s.score === null) {
-        const c = catalog[s.skill];
-        if (c) {
-          suggestions.push({
-            skill: s.skill,
-            ...c,
-            reason: `Competência ${s.skill} ainda não avaliada. Recomendamos estudo para depois comprovar seu domínio na plataforma.`,
-            priority: 2,
-          });
-        }
+        suggestions.push({
+          skill: s.skill,
+          ...c,
+          reason: `Competência ${s.skill} ainda não avaliada. Recomendamos estudo para depois comprovar seu domínio na plataforma.`,
+          priority: 3,
+        });
       } else if (s.score < 70) {
-        const c = catalog[s.skill];
-        if (c) {
-          suggestions.push({
-            skill: s.skill,
-            ...c,
-            reason: `Sua avaliação de ${s.skill} foi ${Math.round(s.score)}/100. Recomendado para reforçar as lacunas identificadas nos testes.`,
-            priority: 1,
-          });
-        }
+        suggestions.push({
+          skill: s.skill,
+          ...c,
+          reason: `Sua avaliação de ${s.skill} foi ${Math.round(s.score)}/100. Recomendado para reforçar as lacunas identificadas nos testes.`,
+          priority: 1,
+        });
+      } else {
+        suggestions.push({
+          skill: s.skill,
+          ...c,
+          reason: `Você foi bem em ${s.skill} (${Math.round(s.score)}/100). Recomendado para aprofundar e consolidar o conhecimento.`,
+          priority: 2,
+        });
       }
     }
 

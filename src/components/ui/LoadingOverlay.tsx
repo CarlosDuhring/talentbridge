@@ -9,52 +9,68 @@ export function LoadingOverlay({
   steps: string[];
   activeStep: number;
 }) {
+  const total = steps.length;
+  const progress = Math.min(
+    100,
+    Math.round(((activeStep + 0.5) / total) * 100)
+  );
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-6 backdrop-blur-[2px]">
-      <div className="w-full max-w-md rounded-xl border border-black/[0.08] bg-white p-8">
-        <div className="flex items-center gap-3">
-          <span className="h-5 w-5 animate-spin rounded-full border-2 border-notion-blue border-t-transparent" />
-          <h2 className="text-[17px] font-semibold">{title}</h2>
+    <div className="rounded-xl border border-black/[0.08] bg-white p-5">
+      <div className="flex items-center gap-3">
+        <span className="relative flex h-9 w-9 shrink-0 items-center justify-center">
+          <span className="absolute inset-0 rounded-full border-2 border-notion-blue/20" />
+          <span className="absolute inset-0 animate-spin rounded-full border-2 border-transparent border-t-notion-blue" />
+        </span>
+        <div className="min-w-0">
+          <p className="text-sm font-medium text-black">{title}</p>
+          <p className="text-xs text-graphite">
+            {steps[activeStep] ?? "Processando"}...
+          </p>
         </div>
-        <ul className="mt-5 space-y-3">
-          {steps.map((step, i) => {
-            const done = i < activeStep;
-            const active = i === activeStep;
-            return (
-              <li key={step} className="flex items-center gap-3 text-sm">
-                <span
-                  className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-[11px] font-semibold ${
-                    done
-                      ? "bg-[#1f7a4d] text-white"
-                      : active
-                        ? "bg-sky-tint text-notion-blue"
-                        : "bg-black/[0.05] text-stone"
-                  }`}
-                >
-                  {done ? "✓" : i + 1}
-                </span>
-                <span
-                  className={
-                    done
-                      ? "text-graphite"
-                      : active
-                        ? "font-medium text-black"
-                        : "text-stone"
-                  }
-                >
-                  {step}
-                </span>
-                {active ? (
-                  <span className="ml-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-notion-blue/40 border-t-notion-blue" />
-                ) : null}
-              </li>
-            );
-          })}
-        </ul>
-        <p className="mt-5 text-xs text-stone">
-          Não feche esta página enquanto a análise termina.
-        </p>
+        <span className="ml-auto text-sm font-semibold tabular-nums text-notion-blue">
+          {progress}%
+        </span>
       </div>
+
+      <div className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-black/[0.06]">
+        <div
+          className="h-full rounded-full bg-notion-blue transition-[width] duration-700 ease-out"
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <ol className="mt-4 space-y-1.5">
+        {steps.map((step, i) => {
+          const done = i < activeStep;
+          const active = i === activeStep;
+          return (
+            <li
+              key={step}
+              className={`flex items-center gap-2 text-sm ${
+                done
+                  ? "text-graphite"
+                  : active
+                    ? "font-medium text-black"
+                    : "text-stone"
+              }`}
+            >
+              <span
+                className={`flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-[9px] font-semibold ${
+                  done
+                    ? "bg-[#1f7a4d] text-white"
+                    : active
+                      ? "bg-notion-blue text-white"
+                      : "bg-black/[0.06] text-stone"
+                }`}
+              >
+                {done ? "✓" : i + 1}
+              </span>
+              {step}
+            </li>
+          );
+        })}
+      </ol>
     </div>
   );
 }

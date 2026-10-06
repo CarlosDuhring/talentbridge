@@ -220,9 +220,9 @@ export function AssessmentRunner({
         <div className="rounded-xl border border-black/[0.08] bg-white p-4 text-xs text-graphite">
           <p className="font-medium text-black/80">Como funciona a correção</p>
           <ul className="mt-2 list-inside list-disc space-y-1">
-            <li>Múltipla escolha: correção automática.</li>
-            <li>Aberta: avaliada por IA com base em rubrica.</li>
-            <li>Código: 60% casos de teste + 40% análise de qualidade.</li>
+            <li>10 questões de múltipla escolha.</li>
+            <li>Correção automática: 10 pontos por acerto.</li>
+            <li>Pontuação final de 0 a 100.</li>
           </ul>
         </div>
 
